@@ -1,0 +1,9 @@
+{
+  "extends": "@workspace/typescript-config/nestjs.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "baseUrl": "./"
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

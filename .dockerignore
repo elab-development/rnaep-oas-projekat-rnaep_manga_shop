@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+.scratch
+.agents
+.claude
+ralph
+**/*.log
