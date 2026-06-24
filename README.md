@@ -40,8 +40,9 @@ Bring up just the backing infra (the four databases + Kafka, with host ports
 published), then run every app as a hot-reloading dev server:
 
 ```bash
-docker compose up -d   # postgres-auth :5432, postgres-orders :5433,
-                       # postgres-payments :5434, mongo :27017, kafka :9092
+docker compose up -d   # postgres-auth :55432, postgres-orders :55433,
+                       # postgres-payments :55434, mongo :27017, kafka :9092
+                       # (5543x on the host avoids clashing with a native Postgres)
 pnpm dev               # turbo runs each app's dev server (web on :3010)
 ```
 

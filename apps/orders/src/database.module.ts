@@ -21,7 +21,7 @@ export class PostgresHealthcheck implements OnModuleInit, OnModuleDestroy {
     // (see docker-compose.yml) so `pnpm dev` works without a .env file.
     connectionString:
       process.env.DATABASE_URL ??
-      "postgres://orders:orders@localhost:5433/orders",
+      "postgres://orders:orders@localhost:55433/orders",
   });
 
   constructor() {
