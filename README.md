@@ -29,13 +29,32 @@ pnpm lint        # lint every workspace
 pnpm test        # run each service's tests (builds shared packages first)
 ```
 
-## Run the full stack
+## Run
 
-`docker compose` brings up all five services, a database per service, Kafka,
-Prometheus, and Grafana as separate containers (ADR-0001):
+Two workflows share one `docker-compose.yml` (ADR-0001 — a database per
+service).
+
+### Dev servers + dockerized databases (day-to-day)
+
+Bring up just the backing infra (the four databases + Kafka, with host ports
+published), then run every app as a hot-reloading dev server:
 
 ```bash
-docker compose up --build
+docker compose up -d   # postgres-auth :5432, postgres-orders :5433,
+                       # postgres-payments :5434, mongo :27017, kafka :9092
+pnpm dev               # turbo runs each app's dev server (web on :3010)
+```
+
+The services fall back to those `localhost` databases when `DATABASE_URL` /
+`MONGODB_URI` are unset, so no `.env` file is needed.
+
+### Full stack in containers
+
+The `full` profile additionally builds and runs the five services plus
+Prometheus and Grafana:
+
+```bash
+docker compose --profile full up --build
 ```
 
 ### Boot smoke check

@@ -17,7 +17,11 @@ import { Pool } from "pg";
 export class PostgresHealthcheck implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PostgresHealthcheck.name);
   private readonly pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    // Falls back to the docker-compose Postgres published on the host
+    // (see docker-compose.yml) so `pnpm dev` works without a .env file.
+    connectionString:
+      process.env.DATABASE_URL ??
+      "postgres://payments:payments@localhost:5434/payments",
   });
 
   constructor() {
