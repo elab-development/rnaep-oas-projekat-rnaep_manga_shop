@@ -62,6 +62,22 @@ Use the glossary's vocabulary in code, tests, and commit messages. If your work
 would contradict an ADR, surface it in the issue comments rather than silently
 overriding it.
 
+# BRANCH
+
+Before writing any code, create a fresh working branch off `develop` for this
+task — never commit the work directly on `develop` or `master`:
+
+```
+git checkout develop
+git pull --ff-only        # if a remote is configured; ignore if it fails offline
+git checkout -b <type>/<NN>-<slug>
+```
+
+Name it after the issue: `<type>` is `feat` for features, `fix` for bugfixes,
+`chore` for infrastructure/refactors; `<NN>-<slug>` matches the issue file
+(e.g. `feat/03-catalog-browse-search`). Do all of this task's work on this
+branch.
+
 # IMPLEMENTATION
 
 Use /tdd to complete the task.
@@ -81,13 +97,27 @@ Before committing, run the feedback loops from the repo root:
 
 Everything must pass before you commit.
 
-# COMMIT
+# COMMIT & MERGE
 
-Make a git commit. The commit message must:
+Commit your work on the task branch. The commit message must:
 
 1. Include key decisions made
 2. Include files changed
 3. Include blockers or notes for next iteration
+
+Then integrate the branch into `develop` only — **never merge a task branch
+straight into `master`**:
+
+```
+git checkout develop
+git merge --no-ff <type>/<NN>-<slug>
+```
+
+`master` is a separate promotion step that only ever happens by merging
+`develop` into it, and only after the work is already on `develop`. Do not touch
+`master` from this loop; promoting `develop` → `master` is a deliberate action
+left to the human. The invariant: every change reaches `master` through
+`develop` first, never directly from a task branch.
 
 # THE ISSUE
 
