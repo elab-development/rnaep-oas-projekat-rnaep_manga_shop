@@ -1,0 +1,8 @@
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+python-dotenv
+pandas
+
+# py -m pip install langchain langchain-core langchain-community langchain-google-genai python-dotenv pandas
