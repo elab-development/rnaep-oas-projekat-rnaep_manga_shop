@@ -26,7 +26,8 @@ services:
       POSTGRES_PASSWORD: auth
       POSTGRES_DB: auth
     ports:
-      - "5432:5432"
+      # 5543x on the host (not 5432) to avoid clashing with a native Postgres.
+      - "55432:5432"
     # Postgres 18+ images store data in a major-version subdirectory, so the
     # volume mounts at /var/lib/postgresql (not /var/lib/postgresql/data).
     volumes:
@@ -44,7 +45,7 @@ services:
       POSTGRES_PASSWORD: orders
       POSTGRES_DB: orders
     ports:
-      - "5433:5432"
+      - "55433:5432"
     volumes:
       - postgres-orders-data:/var/lib/postgresql
     healthcheck:
@@ -60,7 +61,7 @@ services:
       POSTGRES_PASSWORD: payments
       POSTGRES_DB: payments
     ports:
-      - "5434:5432"
+      - "55434:5432"
     volumes:
       - postgres-payments-data:/var/lib/postgresql
     healthcheck:
