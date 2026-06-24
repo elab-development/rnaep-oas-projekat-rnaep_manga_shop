@@ -1,0 +1,11 @@
+# Grafana datasource provisioning (slice 01 baseline): point Grafana at the
+# Prometheus container so it boots ready-to-use. Dashboards land in slice 12.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
