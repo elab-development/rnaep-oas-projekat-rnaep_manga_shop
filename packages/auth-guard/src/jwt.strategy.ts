@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy, type StrategyOptions } from "passport-jwt";
 import type { AuthUser, JwtPayload } from "./auth-user";
+import { getJwtSecret } from "./jwt-config";
 
 /**
  * Passport JWT strategy shared by every service (ADR-0007): each service
@@ -17,8 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const options: StrategyOptions = {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        process.env.JWT_SECRET ?? "dev-insecure-secret-replace-in-slice-02",
+      secretOrKey: getJwtSecret(),
     };
     super(options);
   }
