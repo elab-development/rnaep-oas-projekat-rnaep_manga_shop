@@ -19,15 +19,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nestjs/common": "^11",
-    "@nestjs/core": "^11",
     "@nestjs/passport": "^11",
     "@workspace/contracts": "workspace:*",
     "passport": "^0.7",
     "passport-jwt": "^4",
     "reflect-metadata": "^0.2"
   },
+  "peerDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11"
+  },
   "devDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
     "@types/passport-jwt": "^4",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",

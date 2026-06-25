@@ -73,3 +73,31 @@ done
 
 Prometheus is at <http://localhost:9090>, Grafana at <http://localhost:3030>
 (admin/admin). Service `/metrics` endpoints land in slice 12.
+
+## Auth (slice 02)
+
+Account creation and login (ADR-0005 single role, ADR-0007 stateless JWT). The
+frontend talks only to the gateway, which proxies `/auth/*` to the Auth service:
+
+| Route                | Auth   | Purpose                                          |
+| -------------------- | ------ | ------------------------------------------------ |
+| `POST /auth/register`| public | Create a `customer`; bcrypt-hashed password      |
+| `POST /auth/login`   | public | Returns a 15-min JWT `{ accessToken }`           |
+| `GET  /auth/me`      | Bearer | Echoes the token-derived identity (guard demo)   |
+
+The token travels in the `Authorization: Bearer` header (never a cookie) and is
+verified locally by each service via `@workspace/auth-guard`. The gateway
+fast-fails an invalid/expired token before proxying. Web pages: `/register`,
+`/login` (the token is kept in `localStorage`).
+
+Optional env (sensible dev fallbacks if unset):
+
+| Var                      | Used by | Default                                  |
+| ------------------------ | ------- | ---------------------------------------- |
+| `JWT_SECRET`             | all     | shared dev secret (set in prod)          |
+| `FRONTEND_ORIGIN`        | gateway | `http://localhost:3010` (CORS allow-list)|
+| `AUTH_SERVICE_URL`       | gateway | `http://localhost:3001`                  |
+| `NEXT_PUBLIC_GATEWAY_URL`| web     | `http://localhost:3000`                  |
+
+Auth runs Drizzle migrations at boot; the schema lives in `apps/auth/drizzle/`
+(`pnpm --filter auth exec drizzle-kit generate` regenerates after schema edits).

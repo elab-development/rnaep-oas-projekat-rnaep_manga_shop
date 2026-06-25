@@ -17,6 +17,8 @@
     "@nestjs/platform-express": "^11",
     "@workspace/auth-guard": "workspace:*",
     "@workspace/contracts": "workspace:*",
+    "http-proxy-middleware": "^2.0.10",
+    "jsonwebtoken": "^9.0.3",
     "reflect-metadata": "^0.2",
     "rxjs": "^7.8"
   },
@@ -26,6 +28,7 @@
     "@nestjs/testing": "^11",
     "@types/express": "^5",
     "@types/jest": "^29",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/supertest": "^6",
     "@workspace/eslint-config": "workspace:*",
@@ -37,12 +40,21 @@
     "typescript": "^5"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": ".",
     "testEnvironment": "node",
     "testRegex": ".*\\.(spec|e2e-spec)\\.ts$",
     "transform": {
-      "^.+\\.ts$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json"
+        }
+      ]
     }
   }
 }
