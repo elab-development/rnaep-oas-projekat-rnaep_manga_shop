@@ -15,4 +15,5 @@
 export * from "./topics";
 export * from "./roles";
 export * from "./money";
+export * from "./catalog";
 export * from "./events";

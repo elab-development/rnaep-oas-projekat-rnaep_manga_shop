@@ -1,19 +1,41 @@
-import { Button } from "@workspace/ui/components/button"
+import Link from "next/link";
+import { buttonVariants } from "@workspace/ui/components/button";
 
 export default function Page() {
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="text-muted-foreground font-mono text-xs">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
+    <main className="mx-auto flex min-h-svh max-w-3xl flex-col justify-center gap-8 px-6 py-16">
+      <div className="flex flex-col gap-4">
+        <span className="font-mono text-xs font-bold tracking-[0.3em] uppercase">
+          漫 · Manga Shop
+        </span>
+        <h1 className="font-[family-name:var(--font-sans)] text-6xl leading-[0.95] font-bold tracking-tight uppercase">
+          Stories worth
+          <br />
+          shelving.
+        </h1>
+        <p className="text-muted-foreground max-w-prose text-lg">
+          Browse a catalog of physical manga volumes — search by title, filter
+          by genre, and see real availability before you buy.
+        </p>
       </div>
-    </div>
-  )
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href="/catalog"
+          className={buttonVariants({ size: "lg", className: "min-w-40" })}
+        >
+          Browse the shelf
+        </Link>
+        <Link
+          href="/login"
+          className={buttonVariants({
+            variant: "outline",
+            size: "lg",
+            className: "min-w-40",
+          })}
+        >
+          Sign in
+        </Link>
+      </div>
+    </main>
+  );
 }

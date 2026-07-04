@@ -36,6 +36,7 @@ describe("gateway (e2e)", () => {
     process.env.JWT_SECRET = SECRET;
     process.env.FRONTEND_ORIGIN = ORIGIN;
     process.env.AUTH_SERVICE_URL = `http://127.0.0.1:${port}`;
+    process.env.CATALOG_URL = `http://127.0.0.1:${port}`;
 
     app = await createGateway();
     await app.init();
@@ -66,6 +67,17 @@ describe("gateway (e2e)", () => {
       email: "a@b.com",
       password: "password123",
     });
+  });
+
+  it("proxies /catalog/* to the catalog service with no token required (Guest browse)", async () => {
+    received = {};
+    const res = await request(app.getHttpServer()).get(
+      "/catalog/manga?q=naruto&page=1",
+    );
+
+    expect(res.status).toBe(200);
+    expect(received.method).toBe("GET");
+    expect(received.url).toBe("/catalog/manga?q=naruto&page=1");
   });
 
   it("rejects an invalid token before it reaches the service (fast-fail)", async () => {
