@@ -2,9 +2,10 @@ import { Module } from "@nestjs/common";
 import { AuthGuardModule } from "@workspace/auth-guard";
 import { AppController } from "./app.controller";
 import { DatabaseModule } from "./database.module";
+import { MangaModule } from "./manga/manga.module";
 
 @Module({
-  imports: [DatabaseModule, AuthGuardModule],
+  imports: [DatabaseModule, AuthGuardModule, MangaModule],
   controllers: [AppController],
 })
 export class AppModule {}

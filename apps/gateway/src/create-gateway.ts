@@ -6,6 +6,7 @@ import { jwtFastFail } from "./jwt-fast-fail.middleware";
 
 const DEFAULT_FRONTEND_ORIGIN = "http://localhost:3010";
 const DEFAULT_AUTH_SERVICE_URL = "http://localhost:3001";
+const DEFAULT_CATALOG_SERVICE_URL = "http://localhost:3002";
 
 /**
  * Builds the thin API gateway (ADR-0011): the single CORS boundary locked to
@@ -29,6 +30,15 @@ export async function createGateway(): Promise<INestApplication> {
   app.use(
     createProxyMiddleware((pathname) => pathname.startsWith("/auth"), {
       target: process.env.AUTH_SERVICE_URL ?? DEFAULT_AUTH_SERVICE_URL,
+      changeOrigin: true,
+    }),
+  );
+
+  // Catalog browse/search is Guest-accessible: jwtFastFail lets tokenless
+  // requests through, so no auth is required to reach `/catalog/*` (ADR-0011).
+  app.use(
+    createProxyMiddleware((pathname) => pathname.startsWith("/catalog"), {
+      target: process.env.CATALOG_URL ?? DEFAULT_CATALOG_SERVICE_URL,
       changeOrigin: true,
     }),
   );
