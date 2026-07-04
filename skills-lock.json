@@ -7,6 +7,12 @@
       "skillPath": "skills/engineering/domain-modeling/SKILL.md",
       "computedHash": "65da9ce611a203fc6b9ecf95254cf845857243d958cb0d64df556cad87c76312"
     },
+    "frontend-design": {
+      "source": "vercel-labs/agent-eval",
+      "sourceType": "github",
+      "skillPath": "packages/playground/.agents/skills/frontend-design/SKILL.md",
+      "computedHash": "537c1df9d0c694ecf9139a911f9ad0bd111a7ebc173a55457568459e543fe75b"
+    },
     "grill-with-docs": {
       "source": "mattpocock/skills",
       "sourceType": "github",
