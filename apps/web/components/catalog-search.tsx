@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@workspace/ui/components/button";
+import { Field, FieldLabel } from "@workspace/ui/components/field";
+import { Input } from "@workspace/ui/components/input";
 import { cn } from "@workspace/ui/lib/utils";
 
 /**
@@ -47,24 +49,27 @@ export function CatalogSearch({ genres }: { genres: string[] }) {
     router.push("/catalog");
   }
 
-  const hasFilters = selected.size > 0 || query.trim().length > 0;
+  // Reflect *applied* filters (from the URL), not the live input — otherwise
+  // "Clear filters" shows while typing, before a search has been submitted.
+  const appliedQuery = searchParams.get("q") ?? "";
+  const hasFilters = selected.size > 0 || appliedQuery.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
+      {/* A search box, not a data-entry form (ADR-0015): plain navigate-on-submit
+          <form>, no validation. Field + Input only for the shared on-system look. */}
       <form onSubmit={submitSearch} className="flex gap-3">
-        <label className="flex flex-1 flex-col gap-1">
-          <span className="font-mono text-xs font-bold tracking-wide uppercase">
-            Title
-          </span>
-          <input
+        <Field className="flex-1">
+          <FieldLabel htmlFor="catalog-q">Title</FieldLabel>
+          <Input
+            id="catalog-q"
             type="search"
             name="q"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search by title…"
-            className="border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring"
           />
-        </label>
+        </Field>
         <Button type="submit" size="lg" className="self-end">
           Search
         </Button>
