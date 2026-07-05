@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MaxLength, MinLength } from "class-validator";
+import { IsEmail, IsIn, IsString, MaxLength, MinLength } from "class-validator";
+import { Roles, type Role } from "@workspace/contracts";
 
 /**
  * Registration input. `class-validator` runs on every DTO (ADR-0012) so
@@ -22,4 +23,15 @@ export class LoginDto {
   @IsString()
   @MinLength(1)
   password!: string;
+}
+
+/**
+ * Admin role-change input (ADR-0005). `@IsIn` rejects anything outside the three
+ * roles before it reaches the service, so an invalid role is a 400. The target
+ * user is addressed by the path param; the actor is the verified token, never
+ * the body (ADR-0007).
+ */
+export class ChangeRoleDto {
+  @IsIn([Roles.Customer, Roles.Moderator, Roles.Admin])
+  role!: Role;
 }
