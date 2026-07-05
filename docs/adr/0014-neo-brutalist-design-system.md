@@ -26,7 +26,15 @@ Text-on-accent colors are **fixed per hue** (yellow→black, green→black, blue
 - **Corners:** `border-radius: 0` everywhere. Already the default (`--radius: 0` in globals.css). Non-negotiable.
 - **Borders:** chunky, in three weights — `border-box` **3px** (default box), `border-emphasis` **5px** (cards, hero), `border-chip` **2px** (inputs, chips) — all ink-colored. Driven by `--border-width{,-emphasis,-chip}` CSS variables in `:root`, never hardcoded per component. Plain Tailwind `border` (1px) is reserved for thin divider rules; the built-in `border` utility is *not* overridden.
 - **Shadows:** hard offset, **zero blur** — `4px 4px 0` in ink color; hero/primary `6px 6px 0`. No blurred/soft shadows anywhere.
-- **Press interaction:** on `:active`, the element translates `+2px, +2px` and its shadow shrinks to `2px 2px 0` — it physically presses *into* its shadow. This is the signature motion. No opacity fades, no easing curves.
+- **Press interaction:** on `:active`, an **interactive control** translates `+2px, +2px` and its shadow shrinks to `2px 2px 0` — it physically presses *into* its shadow. This is the signature motion. No opacity fades, no easing curves. The motion belongs to controls, not surfaces: it ships as the reusable `.brutal-btn` skin, **not** on the static `.brutal-box` (see below).
+
+## Box vs. button: two primitives, one presses
+
+The chassis exposes two composable class primitives, split by whether the element reacts to a press:
+
+- **`.brutal-box`** — the *static* surface: ink border + hard offset shadow, no `:active` motion. Cards, panels, the hero, the auth/catalog form containers. It must not translate, because CSS `:active` matches the activated element *and its ancestors* — a `.brutal-box` wrapping a button would jump whenever that button was clicked (this was a real catalog-form bug). Opt-in hover motion (e.g. the catalog card's lift) is fine; press is not.
+- **`.brutal-btn`** — the reusable button skin: same ink border + shadow **plus** the press-into-shadow motion. Composes onto the shared `Button`/`buttonVariants()` and raw `<button>`/`<a>`. It is intentionally **unlayered** CSS (not `@layer`/`@utility`) so it overrides the cva button base's `border-transparent` and `active:translate-y-px` utilities by cascade origin, without `tailwind-merge` needing to know it exists. Use it on every real push-button (CTAs, submit, outline secondaries); leave toggle chips, pager links, and text links flat.
+- **`.brutal-press`** — just the `:active` press motion, no skin. For a `.brutal-box` that is *itself* the clickable element (the catalog card `<a>`) and wants the press but not the button skin's hover-shadow-shrink — the card lifts on hover, and a shrinking shadow would fight that. Interactive elements only, never a container that wraps its own buttons (that's the ancestor-`:active` bug `.brutal-box` exists to avoid). `.brutal-btn` and `.brutal-press` share the one press rule.
 
 ## Typography
 

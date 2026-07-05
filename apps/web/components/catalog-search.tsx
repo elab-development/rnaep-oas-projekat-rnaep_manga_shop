@@ -70,7 +70,7 @@ export function CatalogSearch({ genres }: { genres: string[] }) {
             placeholder="Search by title…"
           />
         </Field>
-        <Button type="submit" size="lg" className="self-end">
+        <Button type="submit" size="lg" className="brutal-btn h-11 self-end">
           Search
         </Button>
       </form>

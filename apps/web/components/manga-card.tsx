@@ -13,7 +13,7 @@ export function MangaCard({ manga }: { manga: MangaView }) {
   return (
     <Link
       href={`/catalog/${manga.id}`}
-      className="brutal-box group flex flex-col bg-card hover:-translate-y-0.5"
+      className="brutal-box brutal-press group flex flex-col bg-card hover:-translate-y-0.5"
     >
       <div className="border-b bg-muted aspect-[2/3] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}

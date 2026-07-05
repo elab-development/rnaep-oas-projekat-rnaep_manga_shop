@@ -141,7 +141,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           type="submit"
           size="lg"
           disabled={pending}
-          className="mt-1 h-11 w-full border-foreground text-sm font-semibold tracking-[0.2em] uppercase shadow-brutal transition-all hover:shadow-brutal-sm disabled:opacity-70"
+          className="brutal-btn mt-1 h-11 w-full text-sm font-semibold tracking-[0.2em] uppercase disabled:opacity-70"
         >
           {pending ? "One sec…" : copy.cta}
         </Button>

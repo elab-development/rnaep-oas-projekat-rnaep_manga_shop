@@ -21,7 +21,10 @@ export default function Page() {
       <div className="flex flex-wrap gap-3">
         <Link
           href="/catalog"
-          className={buttonVariants({ size: "lg", className: "min-w-40" })}
+          className={buttonVariants({
+            size: "lg",
+            className: "brutal-btn min-w-40",
+          })}
         >
           Browse the shelf
         </Link>
@@ -30,7 +33,7 @@ export default function Page() {
           className={buttonVariants({
             variant: "outline",
             size: "lg",
-            className: "min-w-40",
+            className: "brutal-btn min-w-40",
           })}
         >
           Sign in
