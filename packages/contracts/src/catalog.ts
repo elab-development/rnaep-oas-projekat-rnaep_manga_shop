@@ -38,6 +38,49 @@ export interface MangaView {
   available: number;
 }
 
+/**
+ * A Jikan search result normalized to the fields a Moderator prefills when
+ * adding a Manga (ADR-0009: enrichment is a snapshot at add-time). `jikanId`
+ * is kept for reference and never used to auto-resync. Jikan supplies neither
+ * price nor stock — the Moderator sets those.
+ */
+export interface JikanSuggestion {
+  jikanId: number;
+  title: string;
+  author: string;
+  genres: string[];
+  cover: string;
+  description: string;
+}
+
+/**
+ * The fields a Moderator supplies to create a Manga. Data may be prefilled from
+ * a {@link JikanSuggestion} or entered manually; either way price (EUR cents,
+ * ADR-0006) and `quantity` are the Moderator's own (ADR-0009). `jikanId` is the
+ * add-time snapshot reference, absent for a fully manual entry.
+ */
+export interface CreateMangaInput {
+  title: string;
+  author: string;
+  genres: string[];
+  cover: string;
+  description: string;
+  /** Price in EUR integer cents (ADR-0006). */
+  price: Cents;
+  /** Physical copies on hand at creation; `reserved` starts at 0. */
+  quantity: number;
+  jikanId?: number;
+}
+
+/**
+ * A partial edit to a Manga's data and price. Stock is updated through its own
+ * endpoint, and `jikanId` is immutable once set (ADR-0009: edits are never
+ * clobbered by Jikan, and Jikan never re-clobbers them either).
+ */
+export type UpdateMangaInput = Partial<
+  Omit<CreateMangaInput, "quantity" | "jikanId">
+>;
+
 /** A single page of results plus the counters a pager needs. */
 export interface Paginated<T> {
   items: T[];
