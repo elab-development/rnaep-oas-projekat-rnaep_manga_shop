@@ -24,8 +24,14 @@ export class MangaController {
       page: query.page,
       limit: query.limit,
       q: query.q,
-      genre: query.genre,
+      genres: query.genre,
     });
+  }
+
+  /** Distinct genres across the catalog, for the filter UI. */
+  @Get("genres")
+  genres(): Promise<string[]> {
+    return this.manga.genres();
   }
 
   @Get("manga/:id")
