@@ -27,7 +27,16 @@ describe("catalog browse & search (e2e)", () => {
   let container: StartedMongoDBContainer;
   let app: INestApplication;
 
+  // Fixed EUR→display rates so conversions are deterministic; Frankfurter is
+  // mocked at the HTTP boundary (global fetch) so the suite never hits network.
+  const RATES = { USD: 1.08, GBP: 0.85, JPY: 160 };
+
   beforeAll(async () => {
+    jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ base: "EUR", rates: RATES }),
+    } as unknown as Response);
+
     container = await new MongoDBContainer("mongo:8").start();
     // DatabaseModule reads MONGODB_URI when the app initialises, so set it first.
     process.env.MONGODB_URI = `${container.getConnectionString()}?directConnection=true`;
@@ -51,6 +60,7 @@ describe("catalog browse & search (e2e)", () => {
   });
 
   afterAll(async () => {
+    jest.restoreAllMocks();
     await app?.close();
     await container?.stop();
   });
@@ -158,6 +168,27 @@ describe("catalog browse & search (e2e)", () => {
     expect(manga.price).toBe(1500);
     expect(manga.stock).toEqual({ quantity: 10, reserved: 3 });
     expect(manga.available).toBe(7);
+  });
+
+  it("labels each list item with display-currency conversions of its EUR price", async () => {
+    // Akira is €15.00 (1500 cents) → USD 15×1.08, GBP 15×0.85, JPY 15×160.
+    const body = (await list("?q=akira")).body as Paginated<MangaView>;
+    expect(body.items[0].display).toEqual({
+      USD: 16.2,
+      GBP: 12.75,
+      JPY: 2400,
+    });
+  });
+
+  it("labels the detail view with display-currency conversions", async () => {
+    const { body: page } = await list("?q=bakuman");
+    const id = (page as Paginated<MangaView>).items[0].id;
+
+    const res = await request(app.getHttpServer()).get(`/catalog/manga/${id}`);
+
+    // Bakuman is €9.00 (900 cents) → USD 9×1.08, GBP 9×0.85, JPY 9×160.
+    const manga = res.body as MangaView;
+    expect(manga.display).toEqual({ USD: 9.72, GBP: 7.65, JPY: 1440 });
   });
 
   it("404s an unknown or malformed manga id", async () => {

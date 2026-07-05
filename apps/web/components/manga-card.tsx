@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { MangaView } from "@workspace/contracts";
 import { AvailabilityBadge } from "@/components/availability-badge";
+import { DisplayPriceLabels } from "@/components/display-prices";
 import { formatEur } from "@/lib/money";
 
 /**
@@ -29,11 +30,14 @@ export function MangaCard({ manga }: { manga: MangaView }) {
           {manga.title}
         </h3>
         <p className="text-muted-foreground text-sm">{manga.author}</p>
-        <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-          <span className="font-mono text-lg font-bold">
-            {formatEur(manga.price)}
-          </span>
-          <AvailabilityBadge available={manga.available} />
+        <div className="mt-auto flex flex-col gap-1 pt-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-lg font-bold">
+              {formatEur(manga.price)}
+            </span>
+            <AvailabilityBadge available={manga.available} />
+          </div>
+          <DisplayPriceLabels display={manga.display} />
         </div>
       </div>
     </Link>

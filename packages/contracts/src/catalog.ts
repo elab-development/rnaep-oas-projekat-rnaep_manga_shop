@@ -1,4 +1,4 @@
-import type { Cents } from "./money";
+import type { Cents, DisplayPrices } from "./money";
 
 /**
  * Catalog read models shared between the Catalog service and the Next.js
@@ -27,6 +27,12 @@ export interface MangaView {
   description: string;
   /** Price in EUR integer cents (ADR-0006). */
   price: Cents;
+  /**
+   * Display-only conversions of `price` into USD/GBP/JPY (ADR-0006), from cached
+   * Frankfurter rates. Absent when no rates are available yet (e.g. the breaker
+   * is open before any successful fetch); never affects the charge.
+   */
+  display?: DisplayPrices;
   stock: StockView;
   /** Derived: `stock.quantity − stock.reserved`. */
   available: number;
