@@ -5,6 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { Pool } from "pg";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 
@@ -19,6 +20,7 @@ describe("auth (e2e)", () => {
 
   let container: StartedPostgreSqlContainer;
   let app: INestApplication;
+  let pool: Pool;
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer("postgres:18-alpine").start();
@@ -26,6 +28,10 @@ describe("auth (e2e)", () => {
     // DrizzleModule reads DATABASE_URL when the app initialises (below), so
     // setting it here — before app.init() — is what matters, not import order.
     process.env.DATABASE_URL = container.getConnectionUri();
+    // Direct handle for seeding the bootstrap admin — there's no API to mint the
+    // first admin (registration always yields a customer), so an out-of-band SQL
+    // promotion stands in for the operator seeding one at deploy time.
+    pool = new Pool({ connectionString: container.getConnectionUri() });
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -39,6 +45,7 @@ describe("auth (e2e)", () => {
 
   afterAll(async () => {
     await app?.close();
+    await pool?.end();
     await container?.stop();
   });
 
@@ -121,6 +128,124 @@ describe("auth (e2e)", () => {
       .get("/auth/me")
       .set("Authorization", "Bearer not.a.real.token");
     expect(badToken.status).toBe(401);
+  });
+
+  describe("admin role management (issue 06)", () => {
+    /** Registers a user, promotes them to admin out-of-band, returns their token. */
+    async function seedAdmin(email: string): Promise<string> {
+      await register(email, "password123");
+      await pool.query("UPDATE users SET role = 'admin' WHERE email = $1", [
+        email,
+      ]);
+      return (await login(email, "password123")).body.accessToken as string;
+    }
+
+    const changeRole = (token: string, id: string, role: string) =>
+      request(app.getHttpServer())
+        .patch(`/auth/users/${id}/role`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ role });
+
+    it("lets an admin change a customer's role to moderator", async () => {
+      const adminToken = await seedAdmin("admin1@example.com");
+      const target = await register("promote-me@example.com", "password123");
+      expect(target.body.role).toBe("customer");
+
+      const res = await changeRole(adminToken, target.body.id, "moderator");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        id: target.body.id,
+        email: "promote-me@example.com",
+        role: "moderator",
+      });
+    });
+
+    it("issues the elevated role in the promoted user's next token", async () => {
+      const adminToken = await seedAdmin("admin2@example.com");
+      const target = await register("newmod@example.com", "password123");
+
+      // Before promotion the login token is a customer.
+      const before = await login("newmod@example.com", "password123");
+      expect(decodeJwt(before.body.accessToken).role).toBe("customer");
+
+      await changeRole(adminToken, target.body.id, "moderator");
+
+      // After promotion a fresh login carries moderator — so every service's
+      // guard (which reads the role from the token) now admits moderator routes.
+      const after = await login("newmod@example.com", "password123");
+      expect(decodeJwt(after.body.accessToken).role).toBe("moderator");
+    });
+
+    it("lists all accounts for an admin", async () => {
+      const adminToken = await seedAdmin("admin3@example.com");
+
+      const res = await request(app.getHttpServer())
+        .get("/auth/users")
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      const emails = (res.body as Array<{ email: string }>).map((u) => u.email);
+      expect(emails).toContain("admin3@example.com");
+      // Never leak the password hash from the admin listing.
+      expect(
+        (res.body as Array<Record<string, unknown>>).every(
+          (u) => u.passwordHash === undefined,
+        ),
+      ).toBe(true);
+    });
+
+    it("rejects a customer from managing roles with 403 (exact @Roles('admin'))", async () => {
+      await register("cust@example.com", "password123");
+      const target = await register("victim1@example.com", "password123");
+      const { body } = await login("cust@example.com", "password123");
+
+      const change = await changeRole(body.accessToken, target.body.id, "admin");
+      expect(change.status).toBe(403);
+
+      const listed = await request(app.getHttpServer())
+        .get("/auth/users")
+        .set("Authorization", `Bearer ${body.accessToken}`);
+      expect(listed.status).toBe(403);
+    });
+
+    it("rejects a moderator too — @Roles('admin') is exact, not hierarchical", async () => {
+      const adminToken = await seedAdmin("admin4@example.com");
+      const mod = await register("mod@example.com", "password123");
+      await changeRole(adminToken, mod.body.id, "moderator");
+      const { body } = await login("mod@example.com", "password123");
+      expect(decodeJwt(body.accessToken).role).toBe("moderator");
+
+      const target = await register("victim2@example.com", "password123");
+      const change = await changeRole(body.accessToken, target.body.id, "admin");
+      expect(change.status).toBe(403);
+    });
+
+    it("rejects an unauthenticated role change with 401", async () => {
+      const target = await register("victim3@example.com", "password123");
+      const res = await request(app.getHttpServer())
+        .patch(`/auth/users/${target.body.id}/role`)
+        .send({ role: "moderator" });
+      expect(res.status).toBe(401);
+    });
+
+    it("404s when the target user does not exist", async () => {
+      const adminToken = await seedAdmin("admin5@example.com");
+      const res = await changeRole(
+        adminToken,
+        "00000000-0000-0000-0000-000000000000",
+        "moderator",
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("400s an invalid target role", async () => {
+      const adminToken = await seedAdmin("admin6@example.com");
+      const target = await register("victim4@example.com", "password123");
+      const res = await changeRole(adminToken, target.body.id, "superuser");
+      expect(res.status).toBe(400);
+    });
   });
 });
 

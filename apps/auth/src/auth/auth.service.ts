@@ -2,13 +2,14 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { JwtPayload } from "@workspace/auth-guard";
 import { Roles, type Role } from "@workspace/contracts";
 import * as bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { DRIZZLE, type Database } from "../db/drizzle.module";
 import { users } from "../db/schema";
 
@@ -74,6 +75,38 @@ export class AuthService {
       email: user.email,
     };
     return { accessToken: await this.jwt.signAsync(payload) };
+  }
+
+  /**
+   * Lists every account for the Admin user panel (issue 06), oldest first.
+   * Admin-only — enforced by the controller's `@Roles('admin')` guard, not here.
+   * Never leaks the password hash (returns {@link PublicUser}).
+   */
+  async listUsers(): Promise<PublicUser[]> {
+    const rows = await this.db
+      .select()
+      .from(users)
+      .orderBy(asc(users.createdAt));
+    return rows.map((u) => this.toPublic(u));
+  }
+
+  /**
+   * Sets a user's single role (ADR-0005). The actor must be an Admin — enforced
+   * by the controller guard — and the target is addressed by id. A promoted user
+   * gets the new role on their next login (tokens are short-lived, ADR-0007;
+   * there's no revocation list, so an existing token keeps its old role until it
+   * expires). A missing target is a 404, not a silent no-op.
+   */
+  async changeRole(id: string, role: Role): Promise<PublicUser> {
+    const [updated] = await this.db
+      .update(users)
+      .set({ role })
+      .where(eq(users.id, id))
+      .returning();
+    if (!updated) {
+      throw new NotFoundException("User not found");
+    }
+    return this.toPublic(updated);
   }
 
   private toPublic(user: typeof users.$inferSelect): PublicUser {
