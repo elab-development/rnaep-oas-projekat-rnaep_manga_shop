@@ -2,7 +2,8 @@
 
 import { AuthError, login, register } from "@/lib/auth"
 import { Button } from "@workspace/ui/components/button"
-import { cn } from "@workspace/ui/lib/utils"
+import { Field, FieldError, FieldLabel } from "@workspace/ui/components/field"
+import { Input } from "@workspace/ui/components/input"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, type FormEvent } from "react"
@@ -18,10 +19,28 @@ const COPY: Record<Mode, { kicker: string; title: string; cta: string }> = {
   },
 }
 
+type FieldErrors = { email?: string; password?: string }
+
+// Client-side checks only (ADR-0015 hybrid): cheap format/length feedback per
+// field. The server stays authoritative for auth failures (wrong password,
+// email taken) — those surface in the form-level box below, not here. Password
+// length is only enforced on register; login must not reject a legacy password.
+function validate(mode: Mode, email: string, password: string): FieldErrors {
+  const errors: FieldErrors = {}
+  if (!email.trim()) errors.email = "Enter your email."
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    errors.email = "Enter a valid email address."
+  if (!password) errors.password = "Enter your password."
+  else if (mode === "register" && password.length < 8)
+    errors.password = "Use at least 8 characters."
+  return errors
+}
+
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -30,6 +49,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
+
+    const errors = validate(mode, email, password)
+    setFieldErrors(errors)
+    if (errors.email || errors.password) return
+
     setPending(true)
     try {
       // Register, then sign the new Customer straight in so they land logged-in.
@@ -37,6 +61,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
       await login(email, password)
       router.push("/")
     } catch (err) {
+      // Server errors stay form-level: the 401 is deliberately ambiguous
+      // ("wrong email or password") so we never reveal which field was wrong.
       setError(
         err instanceof AuthError
           ? err.message
@@ -57,24 +83,50 @@ export function AuthForm({ mode }: { mode: Mode }) {
       </h1>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate>
-        <Field
-          label="Email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={setEmail}
-          placeholder="you@example.com"
-        />
-        <Field
-          label="Password"
-          type="password"
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          value={password}
-          onChange={setPassword}
-          placeholder={
-            mode === "register" ? "At least 8 characters" : "••••••••"
-          }
-        />
+        <Field data-invalid={fieldErrors.email ? "true" : undefined}>
+          <FieldLabel htmlFor="email">Email</FieldLabel>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            aria-invalid={!!fieldErrors.email}
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              if (fieldErrors.email)
+                setFieldErrors((p) => ({ ...p, email: undefined }))
+            }}
+            placeholder="you@example.com"
+          />
+          <FieldError>{fieldErrors.email}</FieldError>
+        </Field>
+
+        <Field data-invalid={fieldErrors.password ? "true" : undefined}>
+          <FieldLabel htmlFor="password">Password</FieldLabel>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={
+              mode === "login" ? "current-password" : "new-password"
+            }
+            required
+            minLength={mode === "register" ? 8 : undefined}
+            aria-invalid={!!fieldErrors.password}
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              if (fieldErrors.password)
+                setFieldErrors((p) => ({ ...p, password: undefined }))
+            }}
+            placeholder={
+              mode === "register" ? "At least 8 characters" : "••••••••"
+            }
+          />
+          <FieldError>{fieldErrors.password}</FieldError>
+        </Field>
 
         {error && (
           <p
@@ -89,7 +141,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           type="submit"
           size="lg"
           disabled={pending}
-          className="mt-1 h-11 w-full border-foreground text-sm font-semibold tracking-[0.2em] uppercase shadow-brutal transition-all hover:shadow-brutal-sm disabled:opacity-70"
+          className="brutal-btn mt-1 h-11 w-full text-sm font-semibold tracking-[0.2em] uppercase disabled:opacity-70"
         >
           {pending ? "One sec…" : copy.cta}
         </Button>
@@ -119,36 +171,5 @@ export function AuthForm({ mode }: { mode: Mode }) {
         )}
       </p>
     </div>
-  )
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  ...input
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-xs tracking-[0.18em] text-foreground/70 uppercase">
-        {label}
-      </span>
-      <input
-        required
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "h-11 border-foreground bg-transparent px-3 text-sm outline-none",
-          "placeholder:text-foreground/35",
-          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          "border-chip"
-        )}
-        {...input}
-      />
-    </label>
   )
 }

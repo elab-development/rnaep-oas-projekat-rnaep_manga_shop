@@ -216,8 +216,14 @@
   background-size: 12px 12px;
 }
 
-/* ADR-0014: the signature brutalist primitive — ink border, hard offset shadow,
-   and a press that translates into its own shadow. No radius, no blur, no easing. */
+/* ADR-0014: the signature brutalist primitives — ink border + hard offset shadow.
+   `.brutal-box` is the *static* surface (cards, panels, hero). It never presses:
+   the press-into-shadow motion belongs to `.brutal-btn` below, because only an
+   interactive control should react to :active. A container that translated when a
+   button inside it was clicked was the catalog-form "whole box jumps" bug — CSS
+   :active matches the activated element *and its ancestors*. The transition stays
+   so `.brutal-box`'s opt-in hover motion (e.g. the catalog card's lift) still eases.
+   No radius, no blur, no easing curves. */
 @layer components {
   .brutal-box {
     border-radius: 0;
@@ -231,8 +237,31 @@
     border-width: var(--border-width-emphasis);
     box-shadow: var(--shadow-brutal-lg);
   }
-  .brutal-box:active {
-    transform: translate(2px, 2px);
-    box-shadow: var(--shadow-brutal-sm);
-  }
+}
+
+/* ADR-0014: reusable brutalist button skin — ink border, hard offset shadow, and
+   the signature press that translates the control into its own shrunk shadow.
+   Composes onto <Button>/buttonVariants() and raw <button>/<a>. Deliberately
+   UNLAYERED (not @layer/@utility) so it beats the cva base's `border-transparent`
+   and `active:translate-y-px` utilities by cascade origin — no tailwind-merge
+   awareness required. Disabled buttons get `pointer-events-none` from the cva base,
+   so :hover/:active never fire and the shadow simply stays put. */
+.brutal-btn {
+  border-color: var(--foreground);
+  box-shadow: var(--shadow-brutal);
+  transition: transform 60ms steps(2), box-shadow 60ms steps(2);
+}
+.brutal-btn:hover {
+  box-shadow: var(--shadow-brutal-sm);
+}
+
+/* The press-into-shadow motion itself, factored out so a `.brutal-box` that is
+   *also* the clickable element (e.g. the catalog card `<a>`) can opt in without
+   the button skin's hover-shadow-shrink — the card lifts on hover instead, and a
+   shrinking shadow would fight that. Interactive boxes only: pressing a static
+   container that wraps buttons is the ancestor-:active bug .brutal-box avoids. */
+.brutal-btn:active,
+.brutal-press:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-brutal-sm);
 }

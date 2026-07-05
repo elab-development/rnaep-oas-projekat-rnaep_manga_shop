@@ -83,13 +83,16 @@ export default async function MangaDetailPage({ params }: DetailPageProps) {
             {/* Cart is login-required (ADR-0010) and lands in slice 07; for now
                 a Guest is routed to sign in when they try to add to cart. */}
             {soldOut ? (
-              <Button disabled size="lg" className="min-w-40">
+              <Button disabled size="lg" className="brutal-btn min-w-40">
                 Out of stock
               </Button>
             ) : (
               <Link
                 href="/login"
-                className={buttonVariants({ size: "lg", className: "min-w-40" })}
+                className={buttonVariants({
+                  size: "lg",
+                  className: "brutal-btn min-w-40",
+                })}
               >
                 Add to cart
               </Link>
