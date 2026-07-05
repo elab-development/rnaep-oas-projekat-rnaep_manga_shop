@@ -1,5 +1,14 @@
-import { Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { Transform, Type } from "class-transformer";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from "class-validator";
 import { CATALOG_MAX_PAGE_SIZE, CATALOG_PAGE_SIZE } from "@workspace/contracts";
 
 /**
@@ -21,15 +30,25 @@ export class ListMangaQuery {
   @IsOptional()
   limit: number = CATALOG_PAGE_SIZE;
 
-  /** Case-insensitive title substring. */
+  /** Case-insensitive title search; multiple whitespace-separated terms. */
   @IsString()
   @MaxLength(120)
   @IsOptional()
   q?: string;
 
-  /** Exact genre to filter by. */
-  @IsString()
-  @MaxLength(60)
+  /**
+   * Zero or more genres to filter by (repeat the param: `?genre=A&genre=B`).
+   * Normalized to a string array so a single value and a list are handled alike.
+   */
   @IsOptional()
-  genre?: string;
+  @Transform(({ value }) =>
+    (Array.isArray(value) ? value : [value]).filter(
+      (v: unknown): v is string => typeof v === "string" && v.trim().length > 0,
+    ),
+  )
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  @ArrayMaxSize(30)
+  genre?: string[];
 }

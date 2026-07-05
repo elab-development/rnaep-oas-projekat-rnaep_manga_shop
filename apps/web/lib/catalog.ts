@@ -11,7 +11,7 @@ export interface CatalogQuery {
   page?: number;
   limit?: number;
   q?: string;
-  genre?: string;
+  genres?: string[];
 }
 
 /** Fetches a page of the catalog through the gateway. */
@@ -22,7 +22,7 @@ export async function fetchCatalog(
   if (query.page) params.set("page", String(query.page));
   if (query.limit) params.set("limit", String(query.limit));
   if (query.q) params.set("q", query.q);
-  if (query.genre) params.set("genre", query.genre);
+  for (const genre of query.genres ?? []) params.append("genre", genre);
   const qs = params.toString();
 
   const res = await fetch(
@@ -33,6 +33,17 @@ export async function fetchCatalog(
     throw new Error(`Catalog request failed (${res.status})`);
   }
   return (await res.json()) as Paginated<MangaView>;
+}
+
+/** Fetches the distinct genres in the catalog, for the filter chips. */
+export async function fetchGenres(): Promise<string[]> {
+  const res = await fetch(`${gatewayUrl()}/catalog/genres`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Genres request failed (${res.status})`);
+  }
+  return (await res.json()) as string[];
 }
 
 /** Fetches a single manga's detail, or null on a 404. */

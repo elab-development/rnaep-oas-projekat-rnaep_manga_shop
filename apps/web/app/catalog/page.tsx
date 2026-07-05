@@ -4,7 +4,7 @@ import { CATALOG_PAGE_SIZE } from "@workspace/contracts";
 import { cn } from "@workspace/ui/lib/utils";
 import { CatalogSearch } from "@/components/catalog-search";
 import { MangaCard } from "@/components/manga-card";
-import { fetchCatalog } from "@/lib/catalog";
+import { fetchCatalog, fetchGenres } from "@/lib/catalog";
 
 export const metadata: Metadata = {
   title: "Catalog · Manga Shop",
@@ -14,21 +14,23 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 interface CatalogPageProps {
-  searchParams: Promise<{ page?: string; q?: string; genre?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    q?: string;
+    genre?: string | string[];
+  }>;
 }
 
 export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   const params = await searchParams;
   const page = parsePage(params.page);
   const q = params.q?.trim() || undefined;
-  const genre = params.genre?.trim() || undefined;
+  const genres = toArray(params.genre);
 
-  const result = await fetchCatalog({
-    page,
-    limit: CATALOG_PAGE_SIZE,
-    q,
-    genre,
-  });
+  const [result, allGenres] = await Promise.all([
+    fetchCatalog({ page, limit: CATALOG_PAGE_SIZE, q, genres }),
+    fetchGenres(),
+  ]);
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
@@ -43,7 +45,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
       </header>
 
       <section className="brutal-box bg-card p-4">
-        <CatalogSearch q={q} genre={genre} />
+        <CatalogSearch genres={allGenres} />
       </section>
 
       {result.items.length === 0 ? (
@@ -64,7 +66,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
         totalPages={result.totalPages}
         total={result.total}
         q={q}
-        genre={genre}
+        genres={genres}
       />
     </main>
   );
@@ -89,13 +91,13 @@ function Pager({
   totalPages,
   total,
   q,
-  genre,
+  genres,
 }: {
   page: number;
   totalPages: number;
   total: number;
   q?: string;
-  genre?: string;
+  genres: string[];
 }) {
   if (total === 0) return null;
   const hasPrev = page > 1;
@@ -103,14 +105,14 @@ function Pager({
 
   return (
     <nav className="flex items-center justify-between gap-4 font-mono text-sm">
-      <PagerLink page={page - 1} q={q} genre={genre} disabled={!hasPrev}>
+      <PagerLink page={page - 1} q={q} genres={genres} disabled={!hasPrev}>
         ← Prev
       </PagerLink>
       <span className="text-muted-foreground">
         Page {page} of {Math.max(totalPages, 1)} · {total} title
         {total === 1 ? "" : "s"}
       </span>
-      <PagerLink page={page + 1} q={q} genre={genre} disabled={!hasNext}>
+      <PagerLink page={page + 1} q={q} genres={genres} disabled={!hasNext}>
         Next →
       </PagerLink>
     </nav>
@@ -120,13 +122,13 @@ function Pager({
 function PagerLink({
   page,
   q,
-  genre,
+  genres,
   disabled,
   children,
 }: {
   page: number;
   q?: string;
-  genre?: string;
+  genres: string[];
   disabled: boolean;
   children: React.ReactNode;
 }) {
@@ -144,7 +146,7 @@ function PagerLink({
   const params = new URLSearchParams();
   params.set("page", String(page));
   if (q) params.set("q", q);
-  if (genre) params.set("genre", genre);
+  for (const genre of genres) params.append("genre", genre);
   return (
     <Link
       href={`/catalog?${params.toString()}`}
@@ -158,4 +160,9 @@ function PagerLink({
 function parsePage(raw?: string): number {
   const n = Number(raw);
   return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+function toArray(value?: string | string[]): string[] {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
 }

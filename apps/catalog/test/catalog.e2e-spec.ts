@@ -95,6 +95,15 @@ describe("catalog browse & search (e2e)", () => {
     expect(body.items[0].title).toBe("Naruto Special");
   });
 
+  it("matches every search term in any order (token search)", async () => {
+    // "special naruto" — both terms present in "Naruto Special", reversed order.
+    const body = (await list("?q=special%20naruto")).body as Paginated<
+      MangaView
+    >;
+    expect(body.total).toBe(1);
+    expect(body.items[0].title).toBe("Naruto Special");
+  });
+
   it("filters by genre", async () => {
     const body = (await list("?genre=Romance")).body as Paginated<MangaView>;
     // Five fixtures carry the Romance genre.
@@ -102,11 +111,38 @@ describe("catalog browse & search (e2e)", () => {
     expect(body.items.every((m) => m.genres.includes("Romance"))).toBe(true);
   });
 
+  it("filters by genre case-insensitively", async () => {
+    const body = (await list("?genre=romance")).body as Paginated<MangaView>;
+    expect(body.total).toBe(5);
+  });
+
+  it("filters by multiple genres with OR semantics", async () => {
+    // Horror → Dorohedoro; Sci-Fi → Akira, Gantz → three distinct titles.
+    const body = (await list("?genre=Horror&genre=Sci-Fi"))
+      .body as Paginated<MangaView>;
+    expect(body.total).toBe(3);
+    expect(body.items.map((m) => m.title).sort()).toEqual([
+      "Akira",
+      "Dorohedoro",
+      "Gantz",
+    ]);
+  });
+
   it("combines title search and genre filter", async () => {
     const body = (await list("?q=kaguya&genre=Romance"))
       .body as Paginated<MangaView>;
     expect(body.total).toBe(1);
     expect(body.items[0].title).toBe("Kaguya-sama");
+  });
+
+  it("lists the distinct genres present in the catalog, sorted", async () => {
+    const res = await request(app.getHttpServer()).get("/catalog/genres");
+    expect(res.status).toBe(200);
+
+    const expected = [...new Set(FIXTURES.flatMap((m) => m.genres))].sort(
+      (a, b) => a.localeCompare(b),
+    );
+    expect(res.body).toEqual(expected);
   });
 
   it("returns a manga's detail with computed availability", async () => {

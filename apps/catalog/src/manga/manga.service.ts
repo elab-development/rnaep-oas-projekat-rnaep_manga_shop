@@ -11,7 +11,7 @@ interface ListParams {
   page: number;
   limit: number;
   q?: string;
-  genre?: string;
+  genres?: string[];
 }
 
 @Injectable()
@@ -19,17 +19,28 @@ export class MangaService {
   constructor(@Inject(MANGA_MODEL) private readonly model: MangaModel) {}
 
   /**
-   * A page of the catalog, optionally filtered by title substring and/or genre.
-   * Sorted by title for a stable order across pages.
+   * A page of the catalog, optionally filtered by title and/or genres. Title
+   * search is token-based: every whitespace-separated term must appear somewhere
+   * in the title (case-insensitive, any order) — so "special naruto" matches
+   * "Naruto Special". Genres filter is case-insensitive OR — a manga matching any
+   * selected genre is included. Sorted by title for a stable order across pages.
    */
   async list(params: ListParams): Promise<Paginated<MangaView>> {
-    const filter: FilterQuery<MangaDoc> = {};
-    if (params.q) {
-      filter.title = { $regex: escapeRegex(params.q), $options: "i" };
+    const clauses: FilterQuery<MangaDoc>[] = [];
+    for (const term of tokenize(params.q)) {
+      clauses.push({ title: { $regex: escapeRegex(term), $options: "i" } });
     }
-    if (params.genre) {
-      filter.genres = params.genre;
+    if (params.genres && params.genres.length > 0) {
+      clauses.push({
+        genres: {
+          $in: params.genres.map(
+            (g) => new RegExp(`^${escapeRegex(g)}$`, "i"),
+          ),
+        },
+      });
     }
+    const filter: FilterQuery<MangaDoc> =
+      clauses.length > 0 ? { $and: clauses } : {};
 
     const total = await this.model.countDocuments(filter).exec();
     const docs = await this.model
@@ -46,6 +57,16 @@ export class MangaService {
       total,
       totalPages: total === 0 ? 0 : Math.ceil(total / params.limit),
     };
+  }
+
+  /**
+   * The distinct genres present across the catalog, sorted — powers the genre
+   * filter chips so the UI never hardcodes a genre list (ADR-0009: the catalog
+   * is the source of truth for its own facets).
+   */
+  async genres(): Promise<string[]> {
+    const values = await this.model.distinct("genres").exec();
+    return values.sort((a, b) => a.localeCompare(b));
   }
 
   /** A single manga with computed availability, or null if it does not exist. */
@@ -70,6 +91,12 @@ function toView(doc: HydratedDocument<MangaDoc>): MangaView {
     stock: { quantity: doc.stock.quantity, reserved: doc.stock.reserved },
     available: doc.stock.quantity - doc.stock.reserved,
   };
+}
+
+/** Splits a search string into non-empty, whitespace-separated terms. */
+function tokenize(q?: string): string[] {
+  if (!q) return [];
+  return q.trim().split(/\s+/).filter(Boolean);
 }
 
 /** Escapes regex metacharacters so a search term is matched literally. */
