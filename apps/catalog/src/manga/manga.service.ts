@@ -1,5 +1,10 @@
-import { Inject, Injectable } from "@nestjs/common";
-import type { MangaView, Paginated } from "@workspace/contracts";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import type {
+  CreateMangaInput,
+  MangaView,
+  Paginated,
+  UpdateMangaInput,
+} from "@workspace/contracts";
 import {
   isValidObjectId,
   type FilterQuery,
@@ -82,6 +87,78 @@ export class MangaService {
     if (!doc) return null;
     const rates = await this.currency.rates();
     return toView(doc, rates);
+  }
+
+  /**
+   * Creates a Manga from moderator-supplied data (ADR-0009). `reserved` starts
+   * at 0; any `jikanId` is the add-time snapshot reference, never resynced.
+   */
+  async create(input: CreateMangaInput): Promise<MangaView> {
+    const doc = await this.model.create({
+      title: input.title,
+      author: input.author,
+      genres: input.genres,
+      cover: input.cover,
+      description: input.description,
+      price: input.price,
+      stock: { quantity: input.quantity, reserved: 0 },
+      jikanId: input.jikanId,
+    });
+    const rates = await this.currency.rates();
+    return toView(doc, rates);
+  }
+
+  /**
+   * Applies a partial edit to a Manga's data/price (ADR-0009: never touches
+   * `jikanId` or stock, so moderator edits stick). Returns null if it does not
+   * exist so the controller can 404.
+   */
+  async update(
+    id: string,
+    input: UpdateMangaInput,
+  ): Promise<MangaView | null> {
+    if (!isValidObjectId(id)) return null;
+    const doc = await this.model
+      .findByIdAndUpdate(
+        id,
+        { $set: input },
+        { new: true, runValidators: true },
+      )
+      .exec();
+    if (!doc) return null;
+    const rates = await this.currency.rates();
+    return toView(doc, rates);
+  }
+
+  /**
+   * Sets a Manga's physical stock `quantity` (ADR-0009). Refuses to drop below
+   * the currently `reserved` count — those copies are held for unpaid orders,
+   * and going below would make `available` negative (overselling; ADR-0002).
+   * Returns null if the manga does not exist.
+   */
+  async updateStock(
+    id: string,
+    quantity: number,
+  ): Promise<MangaView | null> {
+    if (!isValidObjectId(id)) return null;
+    const doc = await this.model.findById(id).exec();
+    if (!doc) return null;
+    if (quantity < doc.stock.reserved) {
+      throw new ConflictException(
+        `Cannot set quantity (${quantity}) below reserved (${doc.stock.reserved})`,
+      );
+    }
+    doc.stock.quantity = quantity;
+    await doc.save();
+    const rates = await this.currency.rates();
+    return toView(doc, rates);
+  }
+
+  /** Deletes a Manga. Returns false if no such manga existed (admin-gated). */
+  async remove(id: string): Promise<boolean> {
+    if (!isValidObjectId(id)) return false;
+    const deleted = await this.model.findByIdAndDelete(id).exec();
+    return deleted !== null;
   }
 }
 
