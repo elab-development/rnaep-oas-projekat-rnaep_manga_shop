@@ -28,8 +28,8 @@ export interface JikanOptions {
   breaker?: CircuitBreaker.Options;
 }
 
-/** A handful of suggestions is plenty for the add form's picker. */
-const DEFAULT_LIMIT = 8;
+/** The add form's picker shows at most a few results — cap the fetch to match. */
+const DEFAULT_LIMIT = 5;
 
 /**
  * Searches Jikan (MyAnimeList) to prefill a new Manga's data at add-time
@@ -93,7 +93,16 @@ export class JikanService {
 
   /** Fetches and normalizes suggestions from Jikan. */
   private async fetchSuggestions(query: string): Promise<JikanSuggestion[]> {
-    const url = `${this.baseUrl}/manga?q=${encodeURIComponent(query)}&limit=${this.limit}`;
+    // getMangaSearch query params (Jikan v4 OpenAPI): the search term plus the
+    // first page capped at a few results. `order_by`/`sort` are omitted on
+    // purpose — with `q` set, Jikan ranks by title relevance, which is what an
+    // add-time lookup wants.
+    const params = new URLSearchParams({
+      q: query,
+      page: "1",
+      limit: String(this.limit),
+    });
+    const url = `${this.baseUrl}/manga?${params.toString()}`;
     const res = await this.fetchImpl(url);
     if (!res.ok) throw new Error(`Jikan responded ${res.status}`);
     const body = (await res.json()) as JikanSearchResponse;

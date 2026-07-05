@@ -27,6 +27,19 @@ describe("JikanService", () => {
     } as unknown as Response;
   }
 
+  it("queries getMangaSearch with the term, first page, capped at 5", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jikanOk());
+    const service = new JikanService({ fetchImpl });
+
+    await service.search("berserk");
+
+    const url = new URL(fetchImpl.mock.calls[0][0] as string);
+    expect(url.pathname.endsWith("/manga")).toBe(true);
+    expect(url.searchParams.get("q")).toBe("berserk");
+    expect(url.searchParams.get("page")).toBe("1");
+    expect(url.searchParams.get("limit")).toBe("5");
+  });
+
   it("maps Jikan results to prefill suggestions", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jikanOk());
     const service = new JikanService({ fetchImpl });
