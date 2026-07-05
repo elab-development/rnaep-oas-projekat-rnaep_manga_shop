@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Button, buttonVariants } from "@workspace/ui/components/button";
 import { AvailabilityBadge } from "@/components/availability-badge";
+import { DisplayPriceLabels } from "@/components/display-prices";
 import { fetchManga } from "@/lib/catalog";
 import { formatEur } from "@/lib/money";
 
@@ -76,6 +77,7 @@ export default async function MangaDetailPage({ params }: DetailPageProps) {
               <span className="font-mono text-3xl font-bold">
                 {formatEur(manga.price)}
               </span>
+              <DisplayPriceLabels display={manga.display} className="text-sm" />
               <AvailabilityBadge available={manga.available} />
             </div>
             {/* Cart is login-required (ADR-0010) and lands in slice 07; for now

@@ -5,6 +5,7 @@ import {
   type FilterQuery,
   type HydratedDocument,
 } from "mongoose";
+import { convert, CurrencyService, type Rates } from "../currency/currency.service";
 import { MANGA_MODEL, type MangaDoc, type MangaModel } from "./manga.schema";
 
 interface ListParams {
@@ -16,7 +17,10 @@ interface ListParams {
 
 @Injectable()
 export class MangaService {
-  constructor(@Inject(MANGA_MODEL) private readonly model: MangaModel) {}
+  constructor(
+    @Inject(MANGA_MODEL) private readonly model: MangaModel,
+    private readonly currency: CurrencyService,
+  ) {}
 
   /**
    * A page of the catalog, optionally filtered by title and/or genres. Title
@@ -50,8 +54,9 @@ export class MangaService {
       .limit(params.limit)
       .exec();
 
+    const rates = await this.currency.rates();
     return {
-      items: docs.map(toView),
+      items: docs.map((doc) => toView(doc, rates)),
       page: params.page,
       limit: params.limit,
       total,
@@ -74,12 +79,17 @@ export class MangaService {
     // A malformed id is a miss, not a cast error (500).
     if (!isValidObjectId(id)) return null;
     const doc = await this.model.findById(id).exec();
-    return doc ? toView(doc) : null;
+    if (!doc) return null;
+    const rates = await this.currency.rates();
+    return toView(doc, rates);
   }
 }
 
-/** Maps a Mongo document to the public view, deriving `available` (CONTEXT.md). */
-function toView(doc: HydratedDocument<MangaDoc>): MangaView {
+/**
+ * Maps a Mongo document to the public view, deriving `available` (CONTEXT.md)
+ * and, when rates are available, the display-only currency labels (ADR-0006).
+ */
+function toView(doc: HydratedDocument<MangaDoc>, rates?: Rates): MangaView {
   return {
     id: doc.id as string,
     title: doc.title,
@@ -88,6 +98,7 @@ function toView(doc: HydratedDocument<MangaDoc>): MangaView {
     cover: doc.cover,
     description: doc.description,
     price: doc.price,
+    display: rates ? convert(doc.price, rates) : undefined,
     stock: { quantity: doc.stock.quantity, reserved: doc.stock.reserved },
     available: doc.stock.quantity - doc.stock.reserved,
   };

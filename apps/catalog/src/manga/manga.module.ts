@@ -5,6 +5,7 @@ import {
   Module,
   type OnModuleInit,
 } from "@nestjs/common";
+import { CurrencyModule } from "../currency/currency.module";
 import { MangaController } from "./manga.controller";
 import { MangaService } from "./manga.service";
 import { MANGA_MODEL, mangaModelProvider, type MangaModel } from "./manga.schema";
@@ -37,6 +38,7 @@ export class MangaSeeder implements OnModuleInit {
 }
 
 @Module({
+  imports: [CurrencyModule],
   controllers: [MangaController],
   providers: [mangaModelProvider, MangaService, MangaSeeder],
   exports: [MangaService],
