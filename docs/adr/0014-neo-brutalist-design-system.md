@@ -24,7 +24,7 @@ Text-on-accent colors are **fixed per hue** (yellow→black, green→black, blue
 ## Mechanical constants (the "brutalist" feel)
 
 - **Corners:** `border-radius: 0` everywhere. Already the default (`--radius: 0` in globals.css). Non-negotiable.
-- **Borders:** chunky. Base **3px**, emphasis (cards, primary buttons, hero) **5px**, small chips **2px** — all in the ink color. Driven by a single `--border-width` CSS variable in `:root` (with emphasis/chip variants), never hardcoded per component.
+- **Borders:** chunky, in three weights — `border-box` **3px** (default box), `border-emphasis` **5px** (cards, hero), `border-chip` **2px** (inputs, chips) — all ink-colored. Driven by `--border-width{,-emphasis,-chip}` CSS variables in `:root`, never hardcoded per component. Plain Tailwind `border` (1px) is reserved for thin divider rules; the built-in `border` utility is *not* overridden.
 - **Shadows:** hard offset, **zero blur** — `4px 4px 0` in ink color; hero/primary `6px 6px 0`. No blurred/soft shadows anywhere.
 - **Press interaction:** on `:active`, the element translates `+2px, +2px` and its shadow shrinks to `2px 2px 0` — it physically presses *into* its shadow. This is the signature motion. No opacity fades, no easing curves.
 
@@ -44,9 +44,13 @@ Full-color manga covers stay full color, wrapped in a thick ink border + hard of
 - Accents are added as `--status-*` (and action) vars in `:root`/`.dark`, then surfaced as utility classes via `@theme inline` (e.g. `--color-status-paid: var(--status-paid)`), so components use real classes (`bg-status-paid`, `border-status-cancelled`) — never arbitrary values. `--primary` is overridden to yellow (black foreground); shadcn's `--destructive` is reused as our red.
 - Default border width is a `--border-width` variable overridden in `:root`, not literals in component styles.
 
+## Background texture
+
+The one allowed background texture is a **low-alpha screentone dot field** (a manga halftone reference), exposed as the `bg-dots` utility backed by the `--dots` token (ink-based, ~8% alpha, re-resolves per theme via `color-mix`). It reads as atmosphere, not structure. Override `--dots` locally to flip the dots light on an inked panel. Used behind hero/auth surfaces, not behind dense data tables.
+
 ## Considered and rejected
 
-- **Grid-paper / math-notebook backgrounds** — dropped. Grid behind four accents plus data tables was too noisy; identity rests on borders + shadows instead.
+- **Grid-paper / math-notebook backgrounds** — dropped. Grid behind four accents plus data tables was too noisy. Superseded by the dot field above: dots at low alpha give the same "notebook" atmosphere without the grid's structural noise.
 - **Strictly monochrome** — rejected; cannot encode four order states / three stock levels without text-only fallbacks.
 - **Chassis-only dark mode** (accents shared across themes) — rejected. Fully saturated accents vibrate (halation) on near-black. Accents get **toned-down `.dark` values** (lower chroma), so every accent has both a `:root` and a `.dark` value. Do not "simplify" this back to shared accents — it reintroduces the vibration on purpose-defeating grounds.
 

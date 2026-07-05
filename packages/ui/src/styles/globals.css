@@ -96,6 +96,10 @@
     --border-width-emphasis: 5px;
     --border-width-chip: 2px;
 
+    /* ADR-0014: screentone dot field — the one background texture. Ink-based and
+       low-alpha so it reads as atmosphere; color-mix re-resolves per theme. */
+    --dots: color-mix(in oklab, var(--foreground) 8%, transparent);
+
     /* ADR-0014 status accents (light) — fully saturated */
     --status-pending: oklch(0.86 0.17 95);            /* yellow  — pending_payment, low stock */
     --status-pending-foreground: oklch(0 0 0);
@@ -188,10 +192,11 @@
     }
 }
 
-/* ADR-0014: the bare `border` utility reads the width variable, so shadcn's
-   `border` becomes chunky everywhere without hardcoding. Directional utilities
-   (border-t/-b/-x…) keep their 1px for thin divider rules. */
-@utility border {
+/* ADR-0014: named border weights, all reading the width variables so nothing
+   is hardcoded per component. Plain `border` stays Tailwind's 1px for thin
+   divider rules; boxes opt into `border-box` (3px) / `border-emphasis` (5px);
+   inputs and chips use `border-chip` (2px). */
+@utility border-box {
   border-style: var(--tw-border-style, solid);
   border-width: var(--border-width);
 }
@@ -202,6 +207,13 @@
 @utility border-chip {
   border-style: var(--tw-border-style, solid);
   border-width: var(--border-width-chip);
+}
+
+/* ADR-0014: screentone dot field. Override --dots locally (e.g. on an inked
+   panel) to flip the dots light: [--dots:color-mix(in_oklab,var(--background)_14%,transparent)]. */
+@utility bg-dots {
+  background-image: radial-gradient(var(--dots) 1.1px, transparent 1.2px);
+  background-size: 12px 12px;
 }
 
 /* ADR-0014: the signature brutalist primitive — ink border, hard offset shadow,
