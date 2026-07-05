@@ -54,6 +54,17 @@ export async function createGateway(): Promise<INestApplication> {
     }),
   );
 
+  // Checkout (issue 08) is likewise login-required and lives in Orders. Only
+  // `/orders` and `/cart` route there; Catalog's `/internal/*` reserve boundary
+  // is deliberately not exposed by the gateway (ADR-0011), so a browser can never
+  // reach it — Orders calls it service-to-service.
+  app.use(
+    createProxyMiddleware((pathname) => pathname.startsWith("/orders"), {
+      target: process.env.ORDERS_URL ?? DEFAULT_ORDERS_SERVICE_URL,
+      changeOrigin: true,
+    }),
+  );
+
   app.enableShutdownHooks();
   return app;
 }

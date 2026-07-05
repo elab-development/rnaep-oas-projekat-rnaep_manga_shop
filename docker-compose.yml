@@ -188,10 +188,14 @@ services:
       PORT: "3003"
       JWT_SECRET: *jwt-secret
       DATABASE_URL: "postgres://orders:orders@postgres-orders:5432/orders"
+      # Checkout reserves stock synchronously against Catalog (issue 08, ADR-0003).
+      CATALOG_URL: "http://catalog:3002"
     ports:
       - "3003:3003"
     depends_on:
       postgres-orders:
+        condition: service_healthy
+      catalog:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
