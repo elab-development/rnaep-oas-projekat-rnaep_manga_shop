@@ -82,6 +82,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---- DB inspection -------------------------------------------------------
+  # Adminer — lightweight web UI for poking at the Postgres DBs. Open
+  # http://localhost:8080 and pick a server (postgres-auth / postgres-orders /
+  # postgres-payments); each uses its own name as user/password/db. Mongo is
+  # not an Adminer target — use mongosh for that.
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres-auth
+      - postgres-orders
+      - postgres-payments
+
   # ---- Messaging -----------------------------------------------------------
   # Official Apache Kafka image (KRaft, single-node, no ZooKeeper). Data is
   # ephemeral — fine for a dev stack; the saga is rebuilt from sources, not
