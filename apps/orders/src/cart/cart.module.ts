@@ -12,5 +12,7 @@ import { CartService } from "./cart.service";
   imports: [AuthGuardModule],
   controllers: [CartController],
   providers: [CartService],
+  // Exported so the Orders (checkout) feature can read and clear the cart.
+  exports: [CartService],
 })
 export class CartModule {}

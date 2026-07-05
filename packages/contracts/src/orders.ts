@@ -6,6 +6,8 @@
  * verified token, never the request body (ADR-0007, ADR-0012 IDOR protection).
  */
 
+import type { Cents } from "./money";
+
 /**
  * One line of a Cart: a reference to a Manga by id (a cross-service id, stored as
  * a plain logical field — ADR-0010) and the desired `quantity`. The cart carries
@@ -42,3 +44,59 @@ export interface UpdateCartItemInput {
 export const CART_ITEM_MIN_QUANTITY = 1;
 /** Upper bound on a single line's quantity, to keep a cart sane. */
 export const CART_ITEM_MAX_QUANTITY = 99;
+
+/**
+ * An Order's lifecycle status (CONTEXT.md, ADR-0010). `pending_payment` → `paid`
+ * (verified Stripe webhook) → `shipped` (an admin). `cancelled` only ever happens
+ * automatically (payment failure / 30-min expiry). Checkout (issue 08) creates an
+ * order in `pending_payment`; the later statuses land with Payments (issue 09).
+ */
+export type OrderStatus = "pending_payment" | "paid" | "shipped" | "cancelled";
+
+/**
+ * Where an Order ships to, entered by the Customer at checkout and snapshotted
+ * onto the Order so fulfillment needs no other service (ADR-0010: orders are
+ * self-describing). The account email is deliberately not here — it is resolved
+ * on demand from Auth (ADR-0010).
+ */
+export interface ShippingDetails {
+  recipientName: string;
+  address: string;
+  city: string;
+  postalCode: string;
+  phone: string;
+}
+
+/**
+ * Checkout body (issue 08). The Customer supplies **only** shipping — the items,
+ * quantities, titles, and prices all come from the server (the cart and Catalog),
+ * never the client (ADR-0010). The owning `customerId` comes from the token
+ * (ADR-0007), so it is not a field here either.
+ */
+export type CreateOrderInput = ShippingDetails;
+
+/**
+ * One line of a placed Order. `title` and `price` are **snapshots** taken from
+ * Catalog at checkout (ADR-0010), so later catalog changes never alter the order.
+ */
+export interface OrderItemView {
+  mangaId: string;
+  title: string;
+  /** Per-unit EUR price in integer cents, snapshotted at order time (ADR-0006). */
+  price: Cents;
+  quantity: number;
+}
+
+/** A placed Order as exposed by the Orders service. */
+export interface OrderView {
+  id: string;
+  status: OrderStatus;
+  shipping: ShippingDetails;
+  items: OrderItemView[];
+  /** Order total in EUR integer cents: Σ line `price × quantity` (ADR-0006). */
+  total: Cents;
+  createdAt: string;
+}
+
+/** Max length of any single shipping free-text field, to bound stored input. */
+export const SHIPPING_FIELD_MAX_LENGTH = 200;

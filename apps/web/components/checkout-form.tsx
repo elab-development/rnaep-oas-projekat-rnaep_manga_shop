@@ -1,0 +1,308 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import type {
+  CartItemView,
+  MangaView,
+  OrderView,
+  ShippingDetails,
+} from "@workspace/contracts";
+import { Button } from "@workspace/ui/components/button";
+import { Field, FieldError, FieldLabel } from "@workspace/ui/components/field";
+import { Input } from "@workspace/ui/components/input";
+import { CartError, fetchCartManga, getCart } from "@/lib/cart";
+import { CheckoutError, createOrder } from "@/lib/orders";
+import { formatEur } from "@/lib/money";
+
+/** A cart line joined with its Catalog details (null if the manga was deleted). */
+interface EnrichedLine extends CartItemView {
+  manga: MangaView | null;
+}
+
+type ShippingErrors = Partial<Record<keyof ShippingDetails, string>>;
+
+const EMPTY_SHIPPING: ShippingDetails = {
+  recipientName: "",
+  address: "",
+  city: "",
+  postalCode: "",
+  phone: "",
+};
+
+// The shipping fields, in form order, with their labels + autocomplete hints.
+const FIELDS: {
+  key: keyof ShippingDetails;
+  label: string;
+  autoComplete: string;
+  placeholder: string;
+}[] = [
+  { key: "recipientName", label: "Recipient name", autoComplete: "name", placeholder: "Ada Lovelace" },
+  { key: "address", label: "Address", autoComplete: "street-address", placeholder: "1 Analytical Way" },
+  { key: "city", label: "City", autoComplete: "address-level2", placeholder: "London" },
+  { key: "postalCode", label: "Postal code", autoComplete: "postal-code", placeholder: "EC1A 1AA" },
+  { key: "phone", label: "Phone", autoComplete: "tel", placeholder: "+44 20 7946 0000" },
+];
+
+/**
+ * The checkout form (issue 08): review the cart, enter shipping, place the order.
+ * The cart and every price come from the server (ADR-0010) — this composes the
+ * review from Catalog the same way the cart does, and sends only shipping. On
+ * success the order is `pending_payment` and the cart is cleared; paying for it
+ * arrives in the next slice.
+ */
+export function CheckoutForm() {
+  const [lines, setLines] = useState<EnrichedLine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [shipping, setShipping] = useState<ShippingDetails>(EMPTY_SHIPPING);
+  const [fieldErrors, setFieldErrors] = useState<ShippingErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [placed, setPlaced] = useState<OrderView | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const cart = await getCart();
+      const enriched = await Promise.all(
+        cart.items.map(async (item) => ({
+          ...item,
+          manga: await fetchCartManga(item.mangaId),
+        })),
+      );
+      setLines(enriched);
+    } catch (err) {
+      setLoadError(
+        err instanceof CartError
+          ? err.message
+          : "Could not load your cart. Is the shop running?",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitError(null);
+
+    const errors: ShippingErrors = {};
+    for (const { key, label } of FIELDS) {
+      if (!shipping[key].trim()) errors[key] = `Enter the ${label.toLowerCase()}.`;
+    }
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    setSubmitting(true);
+    try {
+      setPlaced(await createOrder(shipping));
+    } catch (err) {
+      setSubmitError(
+        err instanceof CheckoutError
+          ? err.message
+          : "Could not place your order. Please try again.",
+      );
+      setSubmitting(false);
+    }
+  }
+
+  if (placed) return <OrderConfirmation order={placed} />;
+
+  if (loading) {
+    return <p className="text-muted-foreground font-mono text-sm">Loading…</p>;
+  }
+
+  if (loadError) {
+    return (
+      <p role="alert" className="text-destructive text-sm font-medium">
+        {loadError}
+      </p>
+    );
+  }
+
+  if (lines.length === 0) {
+    return (
+      <div className="brutal-box bg-card flex flex-col items-start gap-2 p-8">
+        <p className="text-lg font-bold">Your cart is empty.</p>
+        <p className="text-muted-foreground">
+          Add something to your cart before checking out.
+        </p>
+        <Link
+          href="/catalog"
+          className="mt-2 font-semibold underline underline-offset-4"
+        >
+          Browse the catalog
+        </Link>
+      </div>
+    );
+  }
+
+  const total = lines.reduce(
+    (sum, l) => sum + (l.manga ? l.manga.price * l.quantity : 0),
+    0,
+  );
+
+  return (
+    <div className="grid gap-8 md:grid-cols-[1fr_1.1fr]">
+      {/* Review — server-sourced prices, shown for confirmation only. */}
+      <section className="flex flex-col gap-4">
+        <h2 className="font-mono text-xs font-bold tracking-[0.28em] uppercase">
+          Review
+        </h2>
+        <ul className="flex flex-col gap-3">
+          {lines.map((line) => (
+            <li key={line.mangaId} className="brutal-box bg-card flex gap-4 p-4">
+              <div className="bg-muted aspect-[2/3] w-14 shrink-0 overflow-hidden">
+                {line.manga && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={line.manga.cover}
+                    alt={`Cover of ${line.manga.title}`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col justify-between">
+                <p className="truncate font-bold tracking-tight">
+                  {line.manga ? line.manga.title : "This title is no longer available"}
+                </p>
+                <div className="text-muted-foreground flex items-center justify-between font-mono text-sm">
+                  <span>
+                    {line.manga ? formatEur(line.manga.price) : "—"} × {line.quantity}
+                  </span>
+                  <span className="text-foreground font-bold">
+                    {line.manga
+                      ? formatEur(line.manga.price * line.quantity)
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="brutal-box bg-card flex items-center justify-between p-4">
+          <span className="font-mono text-sm font-bold uppercase">Total</span>
+          <span className="font-mono text-2xl font-bold">{formatEur(total)}</span>
+        </div>
+      </section>
+
+      {/* Shipping — the only thing the client supplies (ADR-0010). */}
+      <section className="flex flex-col gap-4">
+        <h2 className="font-mono text-xs font-bold tracking-[0.28em] uppercase">
+          Shipping
+        </h2>
+        <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate>
+          {FIELDS.map(({ key, label, autoComplete, placeholder }) => (
+            <Field
+              key={key}
+              data-invalid={fieldErrors[key] ? "true" : undefined}
+            >
+              <FieldLabel htmlFor={key}>{label}</FieldLabel>
+              <Input
+                id={key}
+                name={key}
+                autoComplete={autoComplete}
+                required
+                maxLength={200}
+                aria-invalid={!!fieldErrors[key]}
+                value={shipping[key]}
+                placeholder={placeholder}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setShipping((prev) => ({ ...prev, [key]: value }));
+                  if (fieldErrors[key])
+                    setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+                }}
+              />
+              <FieldError>{fieldErrors[key]}</FieldError>
+            </Field>
+          ))}
+
+          {submitError && (
+            <p
+              role="alert"
+              className="border-destructive bg-destructive/10 text-destructive border-l-4 px-3 py-2 text-sm font-medium"
+            >
+              {submitError}
+            </p>
+          )}
+
+          <Button
+            type="submit"
+            size="lg"
+            disabled={submitting}
+            className="brutal-btn mt-1 h-11 w-full text-sm font-semibold tracking-[0.2em] uppercase disabled:opacity-70"
+          >
+            {submitting ? "Placing order…" : `Place order · ${formatEur(total)}`}
+          </Button>
+          <p className="text-muted-foreground font-mono text-xs">
+            Card payment arrives in the next slice. Placing an order reserves your
+            copies and holds them while you pay.
+          </p>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+/** Post-checkout confirmation: the order is placed and awaiting payment. */
+function OrderConfirmation({ order }: { order: OrderView }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="brutal-box bg-card flex flex-col gap-2 p-8">
+        <p className="text-foreground/60 font-mono text-xs font-bold tracking-[0.28em] uppercase">
+          Order placed · awaiting payment
+        </p>
+        <p className="text-2xl font-black tracking-tight">
+          Thanks, {order.shipping.recipientName.split(" ")[0]}!
+        </p>
+        <p className="text-muted-foreground">
+          Your copies are reserved and held while you pay. Card payment arrives in
+          the next slice.
+        </p>
+        <p className="text-muted-foreground font-mono text-xs">
+          Order <span className="text-foreground">{order.id}</span>
+        </p>
+      </div>
+
+      <ul className="flex flex-col gap-2">
+        {order.items.map((item) => (
+          <li
+            key={item.mangaId}
+            className="brutal-box bg-card flex items-center justify-between gap-4 p-4"
+          >
+            <span className="truncate font-bold tracking-tight">
+              {item.title}
+            </span>
+            <span className="text-muted-foreground font-mono text-sm">
+              {formatEur(item.price)} × {item.quantity}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="brutal-box bg-card flex items-center justify-between p-4">
+        <span className="font-mono text-sm font-bold uppercase">Total</span>
+        <span className="font-mono text-2xl font-bold">
+          {formatEur(order.total)}
+        </span>
+      </div>
+
+      <Link
+        href="/catalog"
+        className="font-mono text-sm font-bold uppercase underline underline-offset-4"
+      >
+        Continue shopping →
+      </Link>
+    </div>
+  );
+}

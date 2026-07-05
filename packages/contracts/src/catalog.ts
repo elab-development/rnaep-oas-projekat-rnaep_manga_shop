@@ -94,3 +94,49 @@ export interface Paginated<T> {
 export const CATALOG_PAGE_SIZE = 12;
 /** Upper bound on a client-requested page size, to cap query cost. */
 export const CATALOG_MAX_PAGE_SIZE = 60;
+
+/**
+ * One line Orders asks Catalog to reserve for an Order (ADR-0002). The client
+ * never appears here — `quantity` comes from the server-side cart, and the price
+ * is Catalog's to decide (returned in {@link ReservedLine}), never supplied.
+ */
+export interface ReserveOrderLine {
+  /** The Manga to hold stock for (Catalog-owned id; ADR-0010 cross-service ref). */
+  mangaId: string;
+  quantity: number;
+}
+
+/**
+ * Orders → Catalog "reserve for order" request (ADR-0002, ADR-0003). Keyed by
+ * `orderId`, the idempotency key everywhere in the saga: re-sending the same
+ * `orderId` must not double-reserve. Today a REST DTO; tomorrow the
+ * `order-created` Kafka message (ADR-0003), shape unchanged.
+ */
+export interface ReserveOrderInput {
+  orderId: string;
+  lines: ReserveOrderLine[];
+}
+
+/**
+ * A successfully reserved line echoed back with Catalog's **authoritative** title
+ * and EUR price (ADR-0002, ADR-0010) — Orders snapshots these into the Order so
+ * later catalog edits never alter a placed order, and so the client can't forge a
+ * price.
+ */
+export interface ReservedLine {
+  mangaId: string;
+  title: string;
+  /** Current per-unit EUR price in integer cents (ADR-0006). */
+  price: Cents;
+  quantity: number;
+}
+
+/**
+ * Result of a reserve-for-order: **all-or-nothing** (ADR-0002). Either every line
+ * is held (`reserved`, carrying the priced lines) or none is and the whole order
+ * is `rejected` (partial holds are rolled back first). Maps 1:1 to the future
+ * `stock-reserved` / `stock-rejected` events (ADR-0003).
+ */
+export type ReservationResult =
+  | { status: "reserved"; orderId: string; lines: ReservedLine[] }
+  | { status: "rejected"; orderId: string; reason: string };

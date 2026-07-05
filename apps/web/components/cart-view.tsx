@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { CartItemView, MangaView } from "@workspace/contracts";
+import { buttonVariants } from "@workspace/ui/components/button";
 import {
   CartError,
   fetchCartManga,
@@ -115,8 +116,18 @@ export function CartView() {
         <span className="font-mono text-sm font-bold uppercase">Total</span>
         <span className="font-mono text-2xl font-bold">{formatEur(total)}</span>
       </div>
+      <Link
+        href="/checkout"
+        className={buttonVariants({
+          size: "lg",
+          className:
+            "brutal-btn h-11 w-full text-sm font-semibold tracking-[0.2em] uppercase",
+        })}
+      >
+        Checkout →
+      </Link>
       <p className="text-muted-foreground font-mono text-xs">
-        Checkout arrives in the next slice. Your cart is saved to your account.
+        Your cart is saved to your account across devices.
       </p>
     </div>
   );

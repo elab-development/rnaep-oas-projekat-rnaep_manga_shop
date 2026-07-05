@@ -42,6 +42,8 @@ export class MangaSeeder implements OnModuleInit {
   imports: [CurrencyModule, JikanModule],
   controllers: [MangaController],
   providers: [mangaModelProvider, MangaService, MangaSeeder],
-  exports: [MangaService],
+  // Export the model token too so the Reservation feature can share the single
+  // Manga model binding (re-binding it on the same connection would throw).
+  exports: [MangaService, MANGA_MODEL],
 })
 export class MangaModule {}
