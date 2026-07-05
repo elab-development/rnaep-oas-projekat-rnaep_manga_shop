@@ -34,14 +34,22 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-[family-name:var(--font-sans)] text-4xl font-bold tracking-tight uppercase">
-          The Shelf
-        </h1>
-        <p className="text-muted-foreground max-w-prose">
-          Real volumes, real ink, real availability. Browse the catalog, search
-          by title, and filter by genre.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="font-[family-name:var(--font-sans)] text-4xl font-bold tracking-tight uppercase">
+            The Shelf
+          </h1>
+          <p className="text-muted-foreground max-w-prose">
+            Real volumes, real ink, real availability. Browse the catalog, search
+            by title, and filter by genre.
+          </p>
+        </div>
+        <Link
+          href="/cart"
+          className="border-chip bg-card shrink-0 px-3 py-1.5 font-mono text-sm font-bold uppercase hover:bg-primary hover:text-primary-foreground"
+        >
+          Cart →
+        </Link>
       </header>
 
       <section className="brutal-box bg-card p-4">

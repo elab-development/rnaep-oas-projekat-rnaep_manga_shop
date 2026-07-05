@@ -7,6 +7,7 @@ import { jwtFastFail } from "./jwt-fast-fail.middleware";
 const DEFAULT_FRONTEND_ORIGIN = "http://localhost:3010";
 const DEFAULT_AUTH_SERVICE_URL = "http://localhost:3001";
 const DEFAULT_CATALOG_SERVICE_URL = "http://localhost:3002";
+const DEFAULT_ORDERS_SERVICE_URL = "http://localhost:3003";
 
 /**
  * Builds the thin API gateway (ADR-0011): the single CORS boundary locked to
@@ -39,6 +40,16 @@ export async function createGateway(): Promise<INestApplication> {
   app.use(
     createProxyMiddleware((pathname) => pathname.startsWith("/catalog"), {
       target: process.env.CATALOG_URL ?? DEFAULT_CATALOG_SERVICE_URL,
+      changeOrigin: true,
+    }),
+  );
+
+  // Cart is login-required (ADR-0010): a tokenless `/cart` request is passed
+  // through by jwtFastFail and rejected by the Orders service's own guard, which
+  // also derives the owning customer from the verified token (ADR-0007).
+  app.use(
+    createProxyMiddleware((pathname) => pathname.startsWith("/cart"), {
+      target: process.env.ORDERS_URL ?? DEFAULT_ORDERS_SERVICE_URL,
       changeOrigin: true,
     }),
   );

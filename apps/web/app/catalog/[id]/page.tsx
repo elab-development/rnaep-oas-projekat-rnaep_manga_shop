@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Button, buttonVariants } from "@workspace/ui/components/button";
+import { AddToCart } from "@/components/add-to-cart";
 import { AvailabilityBadge } from "@/components/availability-badge";
 import { DisplayPriceLabels } from "@/components/display-prices";
 import { fetchManga } from "@/lib/catalog";
@@ -25,8 +25,6 @@ export default async function MangaDetailPage({ params }: DetailPageProps) {
   const { id } = await params;
   const manga = await fetchManga(id);
   if (!manga) notFound();
-
-  const soldOut = manga.available <= 0;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-10">
@@ -80,23 +78,9 @@ export default async function MangaDetailPage({ params }: DetailPageProps) {
               <DisplayPriceLabels display={manga.display} className="text-sm" />
               <AvailabilityBadge available={manga.available} />
             </div>
-            {/* Cart is login-required (ADR-0010) and lands in slice 07; for now
-                a Guest is routed to sign in when they try to add to cart. */}
-            {soldOut ? (
-              <Button disabled size="lg" className="brutal-btn min-w-40">
-                Out of stock
-              </Button>
-            ) : (
-              <Link
-                href="/login"
-                className={buttonVariants({
-                  size: "lg",
-                  className: "brutal-btn min-w-40",
-                })}
-              >
-                Add to cart
-              </Link>
-            )}
+            {/* Cart is login-required (ADR-0010): a Guest is routed to sign in
+                first so the cart ties to their account. */}
+            <AddToCart mangaId={manga.id} available={manga.available} />
           </div>
         </div>
       </article>
