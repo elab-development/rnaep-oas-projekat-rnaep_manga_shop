@@ -12,6 +12,12 @@ import { Kafka, logLevel, type Consumer, type Producer } from "kafkajs";
  * service consumes (standing in for the other services), and an observer to
  * capture the events the service emits. The service under test runs in-process
  * against this same broker via `process.env.KAFKA_BROKERS`.
+ *
+ * NOTE: each service's suite starts its *own* throwaway broker, so the root
+ * `test` script pins `turbo test --concurrency=1` — three brokers booting at
+ * once starve Docker and kafkajs drops the connections mid-handshake
+ * (`KafkaJSConnectionClosedError`). A single suite in isolation
+ * (`pnpm --filter <app> test`) has no such contention and needs no cap.
  */
 
 const KAFKA_IMAGE = "confluentinc/cp-kafka:7.6.0";
@@ -26,7 +32,11 @@ export async function startKafka(): Promise<{
   container: StartedKafkaContainer;
   brokers: string[];
 }> {
-  const container = await new KafkaContainer(KAFKA_IMAGE).start();
+  // A generous startup budget: on a busy Docker host (suites run back-to-back)
+  // a fresh broker can be slow to report ready, and the default timeout trips.
+  const container = await new KafkaContainer(KAFKA_IMAGE)
+    .withStartupTimeout(120_000)
+    .start();
   const brokers = [
     `${container.getHost()}:${container.getMappedPort(EXTERNAL_PORT)}`,
   ];
@@ -115,7 +125,7 @@ type Falsy = undefined | null | false | "";
  */
 export async function waitFor<T>(
   fn: () => Promise<T | Falsy> | T | Falsy,
-  { timeoutMs = 20_000, intervalMs = 150 } = {},
+  { timeoutMs = 60_000, intervalMs = 150 } = {},
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
