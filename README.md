@@ -116,7 +116,7 @@ a misleading sign-in prompt.
 
 | Var                     | Required for                | Where to get it                                     |
 | ----------------------- | --------------------------- | --------------------------------------------------- |
-| `STRIPE_SECRET_KEY`     | reaching Stripe checkout    | Dashboard → Developers → API keys (Test mode, `sk_test_…`) |
+| `STRIPE_SECRET_KEY`     | reaching Stripe checkout    | Dashboard → Developers → API keys (Test mode). Prefer a **restricted key** (`rk_test_…`) scoped to _Checkout Sessions: Write_ over a full secret key (`sk_test_…`) — least privilege if it leaks |
 | `STRIPE_WEBHOOK_SECRET` | orders **confirming** (paid)| Stripe CLI `stripe listen` (`whsec_…`, stable per account) |
 
 ### Where to put the secrets
