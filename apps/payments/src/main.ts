@@ -1,3 +1,6 @@
+// Must be first: loads apps/payments/.env into process.env before the AppModule
+// graph (which reads Stripe/DB env) is evaluated.
+import "./load-env";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
