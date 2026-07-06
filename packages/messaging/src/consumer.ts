@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import type { Topic } from "@workspace/contracts";
 import { Kafka, type Consumer } from "kafkajs";
-import { kafkaConfig, kafkaEnabled } from "./config";
+import { kafkaBrokers, kafkaConfig, kafkaEnabled } from "./config";
 
 /** Backoff between consumer (re)connection attempts while the broker is down. */
 const RETRY_DELAY_MS = 1000;
@@ -97,6 +97,9 @@ export abstract class KafkaConsumer
 
   /** One connection attempt; resolves after the group is joined, else throws. */
   private async start(): Promise<void> {
+    this.log.log(
+      `Kafka consumer '${this.groupId}' connecting to ${kafkaBrokers().join(", ")}`,
+    );
     // Pre-create the topics so a fresh cluster doesn't make the consumer wait for
     // a metadata refresh to discover them (matters most in tests).
     const admin = this.kafka.admin();

@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import type { Topic } from "@workspace/contracts";
 import { Kafka, type Producer } from "kafkajs";
-import { kafkaConfig, kafkaEnabled } from "./config";
+import { kafkaBrokers, kafkaConfig, kafkaEnabled } from "./config";
 
 /**
  * The saga's Kafka producer (ADR-0003, ADR-0013). Every saga message is emitted
@@ -70,6 +70,7 @@ export class KafkaProducer
     if (this.connected || this.stopped) {
       return;
     }
+    this.logger.log(`Kafka producer connecting to ${kafkaBrokers().join(", ")}`);
     await this.producer.connect();
     this.connected = true;
   }
