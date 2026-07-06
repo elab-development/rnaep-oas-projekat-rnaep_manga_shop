@@ -16,9 +16,14 @@ import {
   RolesGuard,
   type AuthUser,
 } from "@workspace/auth-guard";
-import { Roles } from "@workspace/contracts";
+import { Roles, type ResolvedEmail } from "@workspace/contracts";
 import { AuthService, type PublicUser } from "./auth.service";
-import { ChangeRoleDto, LoginDto, RegisterDto } from "./dto";
+import {
+  ChangeRoleDto,
+  LoginDto,
+  RegisterDto,
+  ResolveEmailsDto,
+} from "./dto";
 
 /**
  * Auth HTTP boundary. Mounted at `/auth` so the thin gateway can route
@@ -75,5 +80,19 @@ export class AuthController {
     @Body() dto: ChangeRoleDto,
   ): Promise<PublicUser> {
     return this.auth.changeRole(id, dto.role);
+  }
+
+  /**
+   * Batch-resolves the customers behind a page of orders (issue 10, ADR-0011).
+   * Admin-only via the exact `@Roles('admin')` — it exposes emails. The Next.js
+   * order-oversight layer collects the distinct `customerId`s and resolves them
+   * here in one call; the email is never stored on the order (ADR-0010).
+   */
+  @Post("users/emails")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @RolesDecorator(Roles.Admin)
+  resolveEmails(@Body() dto: ResolveEmailsDto): Promise<ResolvedEmail[]> {
+    return this.auth.resolveEmails(dto.ids);
   }
 }

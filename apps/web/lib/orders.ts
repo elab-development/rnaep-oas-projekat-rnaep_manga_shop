@@ -58,6 +58,19 @@ export async function createOrder(
 }
 
 /**
+ * The signed-in Customer's own order history (issue 10), newest first, each with
+ * its current status. Ownership is enforced server-side from the token, so this
+ * only ever returns the caller's own orders — never another Customer's (ADR-0012).
+ */
+export async function listMyOrders(): Promise<OrderView[]> {
+  const res = await fetch(`${gatewayUrl()}/orders`, {
+    headers: { ...authHeader() },
+  });
+  if (!res.ok) throw new CheckoutError(await messageFor(res), res.status);
+  return (await res.json()) as OrderView[];
+}
+
+/**
  * Reads one of the signed-in Customer's own orders (issue 09). Backs the payment
  * success page, which shows "confirming…" and polls this until the signed Stripe
  * webhook has advanced the order to `paid` (or `cancelled`) — the redirect itself
