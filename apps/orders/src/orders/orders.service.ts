@@ -8,12 +8,15 @@ import {
 } from "@nestjs/common";
 import type {
   AdminOrderView,
+  OrderCreatedEvent,
   OrderStatus,
   OrderStatusResult,
   OrderView,
   ReservedLine,
   ShippingDetails,
 } from "@workspace/contracts";
+import { Topics } from "@workspace/contracts";
+import { KafkaProducer } from "@workspace/messaging";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { CartService } from "../cart/cart.service";
 import { DRIZZLE, type Database } from "../db/drizzle.module";
@@ -24,7 +27,6 @@ import {
   type Order,
   type OrderItem,
 } from "../db/schema";
-import { CatalogClient } from "./catalog.client";
 
 /**
  * Turns a Customer's Cart into an Order at checkout (issue 08, ADR-0002/0010).
@@ -37,23 +39,27 @@ export class OrdersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly cart: CartService,
-    private readonly catalog: CatalogClient,
+    private readonly producer: KafkaProducer,
   ) {}
 
   /**
-   * Checkout: read the cart, ask Catalog to reserve the whole order
-   * all-or-nothing, then snapshot the returned price + title into OrderItems,
-   * store the shipping fields, set status `pending_payment`, and clear the cart —
-   * the order-persist and cart-clear run in one DB transaction so a failure can't
-   * leave a half-order or a stale cart.
+   * Checkout (issue 08, migrated to Kafka in issue 11): read the cart, persist the
+   * Order in `pending_payment` with its shipping snapshot, clear the cart, and emit
+   * `order-created` so Catalog reserves the stock (ADR-0002/0003). The order-persist
+   * and cart-clear run in one DB transaction so a failure can't leave a half-order
+   * or a stale cart; the event is emitted only after the row is durably committed,
+   * keyed by `orderId`, so a consumer never races a missing order (ADR-0013).
    *
-   * - An empty cart is a 400 — there is nothing to buy.
-   * - A `rejected` reservation (any line out of stock) is a 409, and Catalog has
-   *   already rolled back every partial hold (ADR-0002), so the Customer is never
-   *   charged and no stock is left held.
+   * The reservation is now **asynchronous** (the interesting part of the sync→async
+   * transformation): the order is created without prices, and the `stock-reserved`
+   * event later fills in Catalog's authoritative title/price and the total
+   * ({@link applyReservation}); a `stock-rejected` event cancels the order
+   * ({@link rejectReservation}) — the compensation once done synchronously as a 409.
+   * So an empty cart is still a 400, but out-of-stock now surfaces as a `cancelled`
+   * order in history rather than a checkout error.
    *
-   * The `orderId` is generated up front so it keys both the reservation (the saga
-   * idempotency key, ADR-0002) and the Order row.
+   * The `orderId` is generated up front so it keys both the Order row and every
+   * saga event for it (the idempotency / partition key, ADR-0002/0013).
    */
   async checkout(
     customerId: string,
@@ -65,23 +71,10 @@ export class OrdersService {
     }
 
     const orderId = randomUUID();
-    const result = await this.catalog.reserve({
-      orderId,
-      lines: cart.items.map((i) => ({
-        mangaId: i.mangaId,
-        quantity: i.quantity,
-      })),
-    });
-
-    if (result.status !== "reserved") {
-      // All-or-nothing: Catalog left no hold behind, so nothing to compensate.
-      throw new ConflictException("One or more items are out of stock");
-    }
-
-    const total = result.lines.reduce(
-      (sum, l) => sum + l.price * l.quantity,
-      0,
-    );
+    const lines = cart.items.map((i) => ({
+      mangaId: i.mangaId,
+      quantity: i.quantity,
+    }));
 
     const order = await this.db.transaction(async (tx) => {
       const [row] = await tx
@@ -95,11 +88,52 @@ export class OrdersService {
           city: shipping.city,
           postalCode: shipping.postalCode,
           phone: shipping.phone,
-          total,
+          // Filled in from Catalog's authoritative prices on `stock-reserved`.
+          total: 0,
         })
         .returning();
+      // Clearing the cart is part of a successful checkout (ADR-0010).
+      await tx.delete(cartItems).where(eq(cartItems.customerId, customerId));
+      return row;
+    });
+
+    await this.producer.emit<OrderCreatedEvent>(Topics.OrderCreated, orderId, {
+      orderId,
+      lines,
+    });
+
+    // The items/total are empty until `stock-reserved` lands (~eventual, ADR-0002).
+    return toView(order, []);
+  }
+
+  /**
+   * Applies a `stock-reserved` event (issue 11): snapshots Catalog's authoritative
+   * title + EUR price for each line into OrderItems and sets the order total
+   * (ADR-0002/0010). Idempotent (ADR-0013): if the order already has items — a
+   * redelivered event — it is left untouched; an unknown order (dropped/foreign)
+   * is a no-op. The order stays `pending_payment`; only payment advances it.
+   */
+  async applyReservation(
+    orderId: string,
+    lines: ReservedLine[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, orderId));
+      if (existing.length > 0) {
+        return; // Already enriched by an earlier delivery — idempotent.
+      }
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId));
+      if (!order) {
+        return; // Unknown order — nothing to enrich.
+      }
       await tx.insert(orderItems).values(
-        result.lines.map((l) => ({
+        lines.map((l) => ({
           orderId,
           mangaId: l.mangaId,
           title: l.title,
@@ -107,12 +141,21 @@ export class OrdersService {
           quantity: l.quantity,
         })),
       );
-      // Clearing the cart is part of a successful checkout (ADR-0010).
-      await tx.delete(cartItems).where(eq(cartItems.customerId, customerId));
-      return row;
+      const total = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+      await tx
+        .update(orders)
+        .set({ total, updatedAt: new Date() })
+        .where(eq(orders.id, orderId));
     });
+  }
 
-    return toView(order, result.lines);
+  /**
+   * Applies a `stock-rejected` event (issue 11): the order can't be filled, so it
+   * is cancelled — the async compensation for what was a synchronous 409 (ADR-0002).
+   * Reuses the guarded, idempotent transition, so a redelivery is a safe no-op.
+   */
+  async rejectReservation(orderId: string): Promise<OrderStatusResult> {
+    return this.transition(orderId, "cancelled");
   }
 
   /**

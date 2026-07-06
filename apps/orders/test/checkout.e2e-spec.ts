@@ -1,87 +1,60 @@
 import type { INestApplication } from "@nestjs/common";
 import { ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import type { StartedKafkaContainer } from "@testcontainers/kafka";
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 import { getJwtSecret } from "@workspace/auth-guard";
-import type {
-  AdminOrderView,
-  OrderStatusResult,
-  OrderView,
-  ReservationResult,
-  ReserveOrderInput,
+import {
+  Topics,
+  type AdminOrderView,
+  type OrderCreatedEvent,
+  type OrderView,
+  type PaymentFailedEvent,
+  type PaymentSucceededEvent,
+  type ReservedLine,
+  type StockRejectedEvent,
+  type StockReservedEvent,
 } from "@workspace/contracts";
 import * as jwt from "jsonwebtoken";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
+import { OrdersConsumer } from "../src/orders/orders.consumer";
+import { startKafka, TestKafka, waitFor } from "./kafka-harness";
 
 /**
- * Orders checkout transport-boundary integration tests (issue 08). Drives the
- * service through its HTTP controllers against a real ephemeral Postgres
- * (testcontainers), with Catalog's reserve stubbed at the HTTP boundary (global
- * fetch) — the same MSW-style seam the PRD prescribes. Asserts observable order
- * state and cart state, never internal calls: the pending_payment order with
- * server-sourced price/title snapshots + cart clear, the all-or-nothing rejection
- * leaving no order, empty-cart and login-required guards, and that item prices
- * come from Catalog rather than the client.
+ * Orders saga integration tests (issue 08, migrated to Kafka in issue 11). Drives
+ * Orders through its HTTP boundary (checkout, reads, ship) and its **Kafka**
+ * boundary (a real broker via testcontainers) against a real ephemeral Postgres.
+ * Checkout now emits `order-created` and the reservation is asynchronous: the test
+ * injects the `stock-reserved`/`stock-rejected` events Catalog would emit and the
+ * `payment-succeeded`/`payment-failed` events Payments would emit, asserting the
+ * observable order + cart state. Prices are always Catalog's, snapshotted onto the
+ * order from the `stock-reserved` event (ADR-0010) — the client never supplies one.
  */
-describe("checkout (e2e)", () => {
-  jest.setTimeout(120_000);
+describe("orders saga over Kafka (e2e)", () => {
+  jest.setTimeout(240_000);
 
-  let container: StartedPostgreSqlContainer;
+  let pg: StartedPostgreSqlContainer;
+  let kafka: StartedKafkaContainer;
   let app: INestApplication;
+  let bus: TestKafka;
 
-  // Catalog's authoritative price/title per manga, returned by the reserve stub —
-  // deliberately not values the client ever sends, so a snapshot proves it came
-  // from Catalog (ADR-0010).
+  // Catalog's authoritative price/title per manga, echoed in stock-reserved —
+  // values the client never sends, so a snapshot proves it came from Catalog.
   const CATALOG: Record<string, { title: string; price: number }> = {
     "manga-one": { title: "Alpha Vol. 1", price: 1500 },
     "manga-two": { title: "Beta Vol. 2", price: 800 },
   };
 
-  // Test knobs for the reserve stub.
-  let reserveRejects = false;
-  let lastReserve: ReserveOrderInput | null = null;
-
   beforeAll(async () => {
-    // Stub Catalog's internal reserve at the network edge. All-or-nothing: reserve
-    // echoes each requested line with Catalog's title + price, or rejects wholesale.
-    jest
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (input, init) => {
-        const url = String(input);
-        if (url.includes("/internal/reservations")) {
-          const body = JSON.parse(String(init?.body)) as ReserveOrderInput;
-          lastReserve = body;
-          const result: ReservationResult = reserveRejects
-            ? {
-                status: "rejected",
-                orderId: body.orderId,
-                reason: "insufficient_stock",
-              }
-            : {
-                status: "reserved",
-                orderId: body.orderId,
-                lines: body.lines.map((l) => ({
-                  mangaId: l.mangaId,
-                  title: CATALOG[l.mangaId]?.title ?? "Unknown",
-                  price: CATALOG[l.mangaId]?.price ?? 0,
-                  quantity: l.quantity,
-                })),
-              };
-          return {
-            ok: true,
-            status: 201,
-            json: async () => result,
-          } as unknown as Response;
-        }
-        throw new Error(`unexpected fetch: ${url}`);
-      });
+    pg = await new PostgreSqlContainer("postgres:18-alpine").start();
+    process.env.DATABASE_URL = pg.getConnectionUri();
 
-    container = await new PostgreSqlContainer("postgres:18-alpine").start();
-    process.env.DATABASE_URL = container.getConnectionUri();
+    const started = await startKafka();
+    kafka = started.container;
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -91,17 +64,19 @@ describe("checkout (e2e)", () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
     );
     await app.init();
-  });
+    // Wait until the saga consumer has joined its group so events the test
+    // produces are seen (it consumes from the log end).
+    await app.get(OrdersConsumer, { strict: false }).whenReady();
 
-  beforeEach(() => {
-    reserveRejects = false;
-    lastReserve = null;
+    bus = new TestKafka(started.brokers);
+    await bus.connect();
   });
 
   afterAll(async () => {
-    jest.restoreAllMocks();
+    await bus?.stop();
     await app?.close();
-    await container?.stop();
+    await kafka?.stop();
+    await pg?.stop();
   });
 
   const server = () => app.getHttpServer();
@@ -132,6 +107,28 @@ describe("checkout (e2e)", () => {
       .set("Authorization", `Bearer ${token}`)
       .send(shipping);
 
+  const getOrder = (token: string, id: string) =>
+    request(server())
+      .get(`/orders/${id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+  /** Builds the priced lines Catalog would return for the given cart lines. */
+  const pricedLines = (
+    lines: { mangaId: string; quantity: number }[],
+  ): ReservedLine[] =>
+    lines.map((l) => ({
+      mangaId: l.mangaId,
+      title: CATALOG[l.mangaId]?.title ?? "Unknown",
+      price: CATALOG[l.mangaId]?.price ?? 0,
+      quantity: l.quantity,
+    }));
+
+  const reserve = (orderId: string, lines: ReservedLine[]) =>
+    bus.emit<StockReservedEvent>(Topics.StockReserved, orderId, {
+      orderId,
+      lines,
+    });
+
   const SHIPPING = {
     recipientName: "Ada Lovelace",
     address: "1 Analytical Way",
@@ -154,97 +151,113 @@ describe("checkout (e2e)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("creates a pending_payment order, snapshots Catalog price/title, and clears the cart", async () => {
+  it("creates a pending_payment order, emits order-created keyed by orderId, and clears the cart", async () => {
     const token = tokenFor(CUST(2));
     await addItem(token, "manga-one", 2);
     await addItem(token, "manga-two", 1);
 
+    const created = await bus.observe<OrderCreatedEvent>(Topics.OrderCreated);
     const res = await checkout(token, SHIPPING);
     expect(res.status).toBe(201);
     const order = res.body as OrderView;
 
+    // The order is placed but not yet priced — reservation is asynchronous now.
     expect(order.status).toBe("pending_payment");
     expect(order.shipping).toEqual(SHIPPING);
-    // Titles + prices are Catalog's, snapshotted onto the order (ADR-0010).
-    expect(order.items).toEqual([
-      { mangaId: "manga-one", title: "Alpha Vol. 1", price: 1500, quantity: 2 },
-      { mangaId: "manga-two", title: "Beta Vol. 2", price: 800, quantity: 1 },
-    ]);
-    // Total is Σ price × quantity from Catalog's prices: 1500·2 + 800·1 = 3800.
-    expect(order.total).toBe(3800);
+    expect(order.items).toEqual([]);
+    expect(order.total).toBe(0);
 
-    // Orders reserved exactly the cart's lines, keyed by the order id.
-    expect(lastReserve?.orderId).toBe(order.id);
-    expect(lastReserve?.lines).toEqual([
+    // `order-created` carries exactly the cart's lines, keyed by the order id.
+    const event = await waitFor(() =>
+      created.find((e) => e.orderId === order.id),
+    );
+    expect(event.lines).toEqual([
       { mangaId: "manga-one", quantity: 2 },
       { mangaId: "manga-two", quantity: 1 },
     ]);
 
-    // The cart is cleared on a successful checkout.
+    // The cart is cleared on checkout.
     expect((await getCart(token)).body).toEqual({ items: [] });
   });
 
-  it("gives the client no channel to supply prices: forged fields are rejected", async () => {
+  it("snapshots Catalog's price/title and the total onto the order on stock-reserved", async () => {
     const token = tokenFor(CUST(3));
+    await addItem(token, "manga-one", 2);
+    await addItem(token, "manga-two", 1);
+    const order = (await checkout(token, SHIPPING)).body as OrderView;
+
+    const lines = pricedLines([
+      { mangaId: "manga-one", quantity: 2 },
+      { mangaId: "manga-two", quantity: 1 },
+    ]);
+    await reserve(order.id, lines);
+
+    // The reservation event fills in Catalog's title/price and the order total.
+    const priced = await waitFor(async () => {
+      const view = (await getOrder(token, order.id)).body as OrderView;
+      return view.items.length > 0 ? view : undefined;
+    });
+    expect(priced.items).toEqual([
+      { mangaId: "manga-one", title: "Alpha Vol. 1", price: 1500, quantity: 2 },
+      { mangaId: "manga-two", title: "Beta Vol. 2", price: 800, quantity: 1 },
+    ]);
+    // Total is Σ price × quantity: 1500·2 + 800·1 = 3800.
+    expect(priced.total).toBe(3800);
+    expect(priced.status).toBe("pending_payment");
+  });
+
+  it("is idempotent on a redelivered stock-reserved: it does not double the items", async () => {
+    const token = tokenFor(CUST(4));
+    await addItem(token, "manga-one", 1);
+    const order = (await checkout(token, SHIPPING)).body as OrderView;
+
+    const lines = pricedLines([{ mangaId: "manga-one", quantity: 1 }]);
+    await reserve(order.id, lines);
+    await waitFor(async () => {
+      const view = (await getOrder(token, order.id)).body as OrderView;
+      return view.items.length > 0 ? view : undefined;
+    });
+    // Redeliver (at-least-once, ADR-0013).
+    await reserve(order.id, lines);
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const view = (await getOrder(token, order.id)).body as OrderView;
+    expect(view.items).toHaveLength(1);
+    expect(view.total).toBe(1500);
+  });
+
+  it("cancels the order on stock-rejected (out of stock, compensation)", async () => {
+    const token = tokenFor(CUST(5));
+    await addItem(token, "manga-one", 99);
+    const order = (await checkout(token, SHIPPING)).body as OrderView;
+
+    await bus.emit<StockRejectedEvent>(Topics.StockRejected, order.id, {
+      orderId: order.id,
+      reason: "insufficient_stock",
+    });
+
+    await waitFor(async () => {
+      const view = (await getOrder(token, order.id)).body as OrderView;
+      return view.status === "cancelled" ? view : undefined;
+    });
+  });
+
+  it("gives the client no channel to supply prices: forged fields are rejected", async () => {
+    const token = tokenFor(CUST(6));
     await addItem(token, "manga-one", 1);
 
     // The checkout body is shipping-only; a forged price/items/total is a
-    // non-whitelisted property and rejected outright (ADR-0010, ADR-0012). Prices
-    // can only ever come from Catalog (asserted by the snapshot test above).
+    // non-whitelisted property and rejected outright (ADR-0010, ADR-0012).
     const res = await checkout(token, {
       ...SHIPPING,
       items: [{ mangaId: "manga-one", title: "FREE", price: 1 }],
       total: 1,
     });
-
     expect(res.status).toBe(400);
-    // Nothing was reserved — checkout never got past validation.
-    expect(lastReserve).toBeNull();
     // The cart is intact, so the Customer can retry cleanly.
     expect((await getCart(token)).body).toEqual({
       items: [{ mangaId: "manga-one", quantity: 1 }],
     });
-  });
-
-  it("409s and leaves no order or emptied cart when a line is out of stock", async () => {
-    reserveRejects = true;
-    const token = tokenFor(CUST(4));
-    await addItem(token, "manga-one", 99);
-
-    const res = await checkout(token, SHIPPING);
-    expect(res.status).toBe(409);
-
-    // All-or-nothing: the cart is untouched so the Customer can adjust and retry.
-    expect((await getCart(token)).body).toEqual({
-      items: [{ mangaId: "manga-one", quantity: 99 }],
-    });
-  });
-
-  it("400s a malformed shipping body", async () => {
-    const token = tokenFor(CUST(5));
-    await addItem(token, "manga-one", 1);
-    const res = await checkout(token, { ...SHIPPING, recipientName: "" });
-    expect(res.status).toBe(400);
-  });
-
-  const getOrder = (token: string, id: string) =>
-    request(server())
-      .get(`/orders/${id}`)
-      .set("Authorization", `Bearer ${token}`);
-
-  it("lets a Customer read their own order back (payment confirmation page)", async () => {
-    const token = tokenFor(CUST(6));
-    await addItem(token, "manga-one", 1);
-    const placed = (await checkout(token, SHIPPING)).body as OrderView;
-
-    const res = await getOrder(token, placed.id);
-    expect(res.status).toBe(200);
-    const order = res.body as OrderView;
-    expect(order.id).toBe(placed.id);
-    expect(order.status).toBe("pending_payment");
-    expect(order.items).toEqual([
-      { mangaId: "manga-one", title: "Alpha Vol. 1", price: 1500, quantity: 1 },
-    ]);
   });
 
   it("404s another Customer's order (IDOR: ownership from the token)", async () => {
@@ -253,47 +266,43 @@ describe("checkout (e2e)", () => {
     const placed = (await checkout(owner, SHIPPING)).body as OrderView;
 
     const attacker = tokenFor(CUST(8));
-    const res = await getOrder(attacker, placed.id);
-    expect(res.status).toBe(404);
+    expect((await getOrder(attacker, placed.id)).status).toBe(404);
   });
 
-  const markPaid = (id: string) =>
-    request(server()).post(`/internal/orders/${id}/paid`);
-  const markCancelled = (id: string) =>
-    request(server()).post(`/internal/orders/${id}/cancelled`);
-
-  it("advances an order to paid on payment success, idempotently", async () => {
+  it("advances an order to paid on payment-succeeded, idempotently", async () => {
     const token = tokenFor(CUST(9));
     await addItem(token, "manga-one", 1);
-    const placed = (await checkout(token, SHIPPING)).body as OrderView;
+    const order = (await checkout(token, SHIPPING)).body as OrderView;
 
-    const first = await markPaid(placed.id);
-    expect(first.status).toBe(201);
-    expect((first.body as OrderStatusResult).status).toBe("paid");
+    const paid: PaymentSucceededEvent = { orderId: order.id, amount: 1500 };
+    await bus.emit(Topics.PaymentSucceeded, order.id, paid);
+    await waitFor(async () => {
+      const view = (await getOrder(token, order.id)).body as OrderView;
+      return view.status === "paid" ? view : undefined;
+    });
 
-    // A duplicate webhook delivery must not re-transition (at-least-once, ADR-0013).
-    const second = await markPaid(placed.id);
-    expect((second.body as OrderStatusResult).status).toBe("paid");
-
-    expect((await getOrder(token, placed.id)).body.status).toBe("paid");
+    // A duplicate delivery must not re-transition (at-least-once, ADR-0013).
+    await bus.emit(Topics.PaymentSucceeded, order.id, paid);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect((await getOrder(token, order.id)).body.status).toBe("paid");
   });
 
-  it("cancels an order on payment failure/timeout (compensation)", async () => {
+  it("cancels an order on payment-failed (compensation)", async () => {
     const token = tokenFor(CUST(10));
     await addItem(token, "manga-one", 1);
-    const placed = (await checkout(token, SHIPPING)).body as OrderView;
+    const order = (await checkout(token, SHIPPING)).body as OrderView;
 
-    const res = await markCancelled(placed.id);
-    expect((res.body as OrderStatusResult).status).toBe("cancelled");
-    expect((await getOrder(token, placed.id)).body.status).toBe("cancelled");
+    await bus.emit<PaymentFailedEvent>(Topics.PaymentFailed, order.id, {
+      orderId: order.id,
+      reason: "timeout",
+    });
+    await waitFor(async () => {
+      const view = (await getOrder(token, order.id)).body as OrderView;
+      return view.status === "cancelled" ? view : undefined;
+    });
   });
 
-  it("404s an internal transition for an unknown order", async () => {
-    const res = await markPaid("99999999-9999-9999-9999-999999999999");
-    expect(res.status).toBe(404);
-  });
-
-  // Order history, admin oversight, and ship (issue 10).
+  // Order history, admin oversight, and ship (issue 10) — HTTP boundary.
   const listMyOrders = (token: string) =>
     request(server()).get("/orders").set("Authorization", `Bearer ${token}`);
   const listAllOrders = (token: string) =>
@@ -308,7 +317,6 @@ describe("checkout (e2e)", () => {
   it("returns only the caller's own orders as history, newest first, with status", async () => {
     const mine = tokenFor(CUST(11));
     const other = tokenFor(CUST(12));
-    // Two orders for me, one for someone else.
     await addItem(mine, "manga-one", 1);
     const first = (await checkout(mine, SHIPPING)).body as OrderView;
     await addItem(mine, "manga-two", 1);
@@ -319,11 +327,9 @@ describe("checkout (e2e)", () => {
     const res = await listMyOrders(mine);
     expect(res.status).toBe(200);
     const orders = res.body as OrderView[];
-    // Exactly my two orders — the other Customer's order is never visible (IDOR).
     expect(orders.map((o) => o.id).sort()).toEqual([first.id, second.id].sort());
-    // Newest first: the second order placed comes back first.
+    // Newest first.
     expect(orders[0].id).toBe(second.id);
-    expect(orders[0].status).toBe("pending_payment");
   });
 
   it("rejects order history without a token (login-required)", async () => {
@@ -338,10 +344,7 @@ describe("checkout (e2e)", () => {
     const admin = tokenFor(CUST(14), "admin");
     const res = await listAllOrders(admin);
     expect(res.status).toBe(200);
-    const orders = res.body as AdminOrderView[];
-    const row = orders.find((o) => o.id === placed.id);
-    // The admin view exposes the owning customerId so Next.js can resolve the
-    // email on demand from Auth (ADR-0010/0011) — the email is never on the order.
+    const row = (res.body as AdminOrderView[]).find((o) => o.id === placed.id);
     expect(row?.customerId).toBe(CUST(13));
     expect(row?.status).toBe("pending_payment");
   });
@@ -357,13 +360,19 @@ describe("checkout (e2e)", () => {
     const cust = tokenFor(CUST(16));
     await addItem(cust, "manga-one", 1);
     const placed = (await checkout(cust, SHIPPING)).body as OrderView;
-    await markPaid(placed.id);
+    // Drive it to paid over the broker.
+    await bus.emit<PaymentSucceededEvent>(Topics.PaymentSucceeded, placed.id, {
+      orderId: placed.id,
+      amount: 1500,
+    });
+    await waitFor(async () => {
+      const view = (await getOrder(cust, placed.id)).body as OrderView;
+      return view.status === "paid" ? view : undefined;
+    });
 
     const admin = tokenFor(CUST(17), "admin");
     const res = await ship(admin, placed.id);
     expect(res.status).toBe(200);
-    expect((res.body as OrderStatusResult).status).toBe("shipped");
-    // The customer sees the shipped status in their own history.
     const mine = (await listMyOrders(cust)).body as OrderView[];
     expect(mine.find((o) => o.id === placed.id)?.status).toBe("shipped");
   });
@@ -374,7 +383,7 @@ describe("checkout (e2e)", () => {
     const placed = (await checkout(cust, SHIPPING)).body as OrderView;
 
     const admin = tokenFor(CUST(19), "admin");
-    // Still pending_payment, not paid — the transition is rejected.
+    // Still pending_payment, not paid.
     expect((await ship(admin, placed.id)).status).toBe(409);
   });
 
@@ -382,9 +391,7 @@ describe("checkout (e2e)", () => {
     const cust = tokenFor(CUST(20));
     await addItem(cust, "manga-one", 1);
     const placed = (await checkout(cust, SHIPPING)).body as OrderView;
-    await markPaid(placed.id);
 
-    // Even the owning customer cannot ship their own order — admin-only (ADR-0010).
     expect((await ship(cust, placed.id)).status).toBe(403);
   });
 

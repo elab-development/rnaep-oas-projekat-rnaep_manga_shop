@@ -12,7 +12,7 @@ import { Button } from "@workspace/ui/components/button";
 import { Field, FieldError, FieldLabel } from "@workspace/ui/components/field";
 import { Input } from "@workspace/ui/components/input";
 import { CartError, fetchCartManga, getCart } from "@/lib/cart";
-import { CheckoutError, createOrder } from "@/lib/orders";
+import { CheckoutError, createOrder, getOrder } from "@/lib/orders";
 import { PaymentError, startCheckoutSession } from "@/lib/payments";
 import { formatEur } from "@/lib/money";
 
@@ -22,6 +22,11 @@ interface EnrichedLine extends CartItemView {
 }
 
 type ShippingErrors = Partial<Record<keyof ShippingDetails, string>>;
+
+/** How often to re-read the order while stock is being reserved (issue 11). */
+const RESERVATION_POLL_MS = 800;
+/** Give up waiting on the reservation and let the payment step take over. */
+const RESERVATION_TIMEOUT_MS = 20_000;
 
 const EMPTY_SHIPPING: ShippingDetails = {
   recipientName: "",
@@ -105,11 +110,23 @@ export function CheckoutForm() {
 
     setSubmitting(true);
     try {
-      const order = await createOrder(shipping);
-      setPlaced(order);
-      // Straight to Stripe's hosted page: the order is reserved and awaiting
-      // payment, and the session is the 30-min hold clock (ADR-0008).
-      await redirectToPayment(order.id);
+      // Checkout places the order and emits `order-created`; stock is reserved
+      // asynchronously by Catalog (issue 11, ADR-0003), so the order comes back
+      // without prices. Wait for the `stock-reserved` event to price it (or a
+      // `stock-rejected` to cancel it) before handing off to Stripe.
+      const placedOrder = await createOrder(shipping);
+      const reserved = await awaitReservation(placedOrder.id);
+      if (reserved === "cancelled") {
+        setSubmitError(
+          "One or more items are out of stock, so your order was cancelled. Please try again.",
+        );
+        setSubmitting(false);
+        return;
+      }
+      setPlaced(reserved);
+      // Now the order is reserved and priced: hand the browser to Stripe's hosted
+      // page — the session is the 30-min hold clock (ADR-0008).
+      await redirectToPayment(reserved.id);
     } catch (err) {
       setSubmitError(
         err instanceof CheckoutError
@@ -117,6 +134,28 @@ export function CheckoutForm() {
           : "Could not place your order. Please try again.",
       );
       setSubmitting(false);
+    }
+  }
+
+  /**
+   * Polls the order until Catalog's `stock-reserved` has priced it (items + total
+   * present) or `stock-rejected` has cancelled it — the async reservation window
+   * (~eventual, ADR-0002). Returns the priced order, or `"cancelled"` if it was
+   * rejected. On timeout it returns the latest order and lets the payment step
+   * surface any remaining problem rather than hanging forever.
+   */
+  async function awaitReservation(
+    orderId: string,
+  ): Promise<OrderView | "cancelled"> {
+    const deadline = Date.now() + RESERVATION_TIMEOUT_MS;
+    for (;;) {
+      const current = await getOrder(orderId);
+      if (current.status === "cancelled") return "cancelled";
+      if (current.items.length > 0 && current.total > 0) return current;
+      if (Date.now() > deadline) return current;
+      await new Promise((resolve) =>
+        setTimeout(resolve, RESERVATION_POLL_MS),
+      );
     }
   }
 

@@ -117,6 +117,13 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
     ports:
       - "9092:9092"
+    healthcheck:
+      # Broker is ready once it can answer a metadata/list request.
+      test:
+        ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ---- Services ------------------------------------------------------------
   gateway:
@@ -168,10 +175,16 @@ services:
       PORT: "3002"
       JWT_SECRET: *jwt-secret
       MONGODB_URI: "mongodb://mongo:27017/catalog"
+      # Catalog consumes `order-created`/`payment-succeeded`/`payment-failed` and
+      # emits `stock-reserved`/`stock-rejected` over Kafka (issue 11, ADR-0003).
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_CLIENT_ID: "catalog"
     ports:
       - "3002:3002"
     depends_on:
       mongo:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
@@ -188,14 +201,16 @@ services:
       PORT: "3003"
       JWT_SECRET: *jwt-secret
       DATABASE_URL: "postgres://orders:orders@postgres-orders:5432/orders"
-      # Checkout reserves stock synchronously against Catalog (issue 08, ADR-0003).
-      CATALOG_URL: "http://catalog:3002"
+      # Checkout emits `order-created` and Orders consumes the saga replies over
+      # Kafka (issue 11, ADR-0003) — no synchronous Catalog HTTP call any more.
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_CLIENT_ID: "orders"
     ports:
       - "3003:3003"
     depends_on:
       postgres-orders:
         condition: service_healthy
-      catalog:
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
@@ -220,12 +235,14 @@ services:
       PORT: "3004"
       JWT_SECRET: *jwt-secret
       DATABASE_URL: "postgres://payments:payments@postgres-payments:5432/payments"
-      # Payment settles the saga synchronously (issue 09, ADR-0002/0003): commit/
-      # release against Catalog, advance status in Orders. The order amount is read
-      # back from Orders (never the client). Stripe redirects land on the web app.
+      # Payment announces the outcome by emitting `payment-succeeded` /
+      # `payment-failed` over Kafka (issue 11, ADR-0002/0003); Orders and Catalog
+      # settle from those events. The order amount is still read back from Orders
+      # over REST (a query, never the client). Stripe redirects land on the web app.
       # These take precedence over apps/payments/.env, overriding its dev-only
       # localhost values with the in-cluster hostnames.
-      CATALOG_URL: "http://catalog:3002"
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_CLIENT_ID: "payments"
       ORDERS_URL: "http://orders:3003"
       WEB_URL: "http://localhost:3010"
     ports:
@@ -233,7 +250,7 @@ services:
     depends_on:
       postgres-payments:
         condition: service_healthy
-      catalog:
+      kafka:
         condition: service_healthy
       orders:
         condition: service_healthy
