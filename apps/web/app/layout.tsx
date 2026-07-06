@@ -1,6 +1,7 @@
 import { Space_Grotesk, Space_Mono } from "next/font/google"
 
 import "@workspace/ui/globals.css"
+import { SiteNav } from "@/components/site-nav"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils";
 
@@ -28,7 +29,10 @@ export default function RootLayout({
       className={cn("antialiased", fontMono.variable, "font-sans", fontSans.variable)}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <SiteNav />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   )
