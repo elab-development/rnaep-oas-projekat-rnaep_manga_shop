@@ -8,8 +8,9 @@
 #
 #   docker compose --profile full up --build
 #                                        # everything in containers: the five
-#                                        # NestJS services + Prometheus/Grafana
-#                                        # too (the `full` profile).
+#                                        # NestJS services + the Next.js web app
+#                                        # + Prometheus/Grafana too (the `full`
+#                                        # profile).
 #
 # Slice 01 only proves "everything boots": each service exposes a /health
 # endpoint used as its container healthcheck. Verify health (see README):
@@ -266,6 +267,40 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Frontend ------------------------------------------------------------
+  # Next.js app served from its standalone build (apps/web/Dockerfile).
+  #
+  # Two gateway addresses, because the app fetches from both sides of the wire:
+  #   - the *browser* runs on the host, so it reaches the gateway at its
+  #     host-published address — NEXT_PUBLIC_GATEWAY_URL, inlined into the client
+  #     bundle at *build* time (default http://localhost:3000, the gateway's
+  #     published port). Passed as a build arg since NEXT_PUBLIC_* is baked in.
+  #   - server components / server actions run *inside* this container, where
+  #     localhost is the container itself — so they use GATEWAY_INTERNAL_URL at
+  #     run time to reach the gateway over the compose network.
+  # Stripe still redirects the browser back to http://localhost:3010 (payments
+  # WEB_URL), which is this service's published port.
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_GATEWAY_URL: "http://localhost:3000"
+    environment:
+      PORT: "3010"
+      GATEWAY_INTERNAL_URL: "http://gateway:3000"
+    ports:
+      - "3010:3010"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3010/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
