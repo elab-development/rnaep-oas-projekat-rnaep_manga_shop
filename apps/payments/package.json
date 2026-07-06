@@ -9,7 +9,8 @@
     "lint": "eslint src test",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "jest"
+    "test": "jest",
+    "stripe:webhook": "stripe listen --forward-to localhost:3000/payments/webhook"
   },
   "dependencies": {
     "@nestjs/common": "^11",
@@ -48,12 +49,21 @@
     "typescript": "^5"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": ".",
     "testEnvironment": "node",
     "testRegex": ".*\\.(spec|e2e-spec)\\.ts$",
     "transform": {
-      "^.+\\.ts$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json"
+        }
+      ]
     }
   }
 }
