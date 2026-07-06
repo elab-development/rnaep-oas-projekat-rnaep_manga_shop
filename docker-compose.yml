@@ -208,6 +208,14 @@ services:
     build:
       context: .
       dockerfile: apps/payments/Dockerfile
+    # Stripe test-mode secrets (ADR-0008) come from apps/payments/.env — the same
+    # git-ignored file `pnpm dev` loads — so there is a single place to set them.
+    # They are never baked into the image (.dockerignore); they are injected here
+    # at runtime. `required: false` so the stack still boots without the file (the
+    # Stripe key then falls back and card checkout fails loudly with a 502).
+    env_file:
+      - path: apps/payments/.env
+        required: false
     environment:
       PORT: "3004"
       JWT_SECRET: *jwt-secret
@@ -215,13 +223,11 @@ services:
       # Payment settles the saga synchronously (issue 09, ADR-0002/0003): commit/
       # release against Catalog, advance status in Orders. The order amount is read
       # back from Orders (never the client). Stripe redirects land on the web app.
+      # These take precedence over apps/payments/.env, overriding its dev-only
+      # localhost values with the in-cluster hostnames.
       CATALOG_URL: "http://catalog:3002"
       ORDERS_URL: "http://orders:3003"
       WEB_URL: "http://localhost:3010"
-      # Stripe test-mode secrets (ADR-0008). Override with your own test keys; the
-      # webhook secret must match the endpoint you register in the Stripe CLI/dashboard.
-      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-sk_test_placeholder}"
-      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}"
     ports:
       - "3004:3004"
     depends_on:

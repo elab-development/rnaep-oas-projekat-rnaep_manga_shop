@@ -1,4 +1,8 @@
 .git
+# Never bake secrets or local env files into the image — they're injected at
+# runtime (docker-compose env_file / -e / orchestrator secrets), never built in.
+**/.env
+**/.env.*
 **/node_modules
 **/dist
 **/.next
