@@ -7,9 +7,13 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { JwtPayload } from "@workspace/auth-guard";
-import { Roles, type Role } from "@workspace/contracts";
+import {
+  Roles,
+  type ResolvedEmail,
+  type Role,
+} from "@workspace/contracts";
 import * as bcrypt from "bcrypt";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { DRIZZLE, type Database } from "../db/drizzle.module";
 import { users } from "../db/schema";
 
@@ -107,6 +111,25 @@ export class AuthService {
       throw new NotFoundException("User not found");
     }
     return this.toPublic(updated);
+  }
+
+  /**
+   * Resolves a batch of user ids to `{ id, email }` (issue 10, ADR-0011) so an
+   * Admin's order-oversight view can show the customer behind each order without
+   * the email ever being duplicated onto the order (ADR-0010). Admin-only —
+   * enforced by the controller guard. Unknown ids are simply omitted (not an
+   * error), and an empty batch short-circuits without touching the DB. Returns
+   * only id + email, never the password hash.
+   */
+  async resolveEmails(ids: string[]): Promise<ResolvedEmail[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows = await this.db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(inArray(users.id, ids));
+    return rows.map((u) => ({ id: u.id, email: u.email }));
   }
 
   private toPublic(user: typeof users.$inferSelect): PublicUser {

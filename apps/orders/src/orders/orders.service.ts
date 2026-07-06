@@ -7,13 +7,14 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type {
+  AdminOrderView,
   OrderStatus,
   OrderStatusResult,
   OrderView,
   ReservedLine,
   ShippingDetails,
 } from "@workspace/contracts";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { CartService } from "../cart/cart.service";
 import { DRIZZLE, type Database } from "../db/drizzle.module";
 import {
@@ -134,6 +135,101 @@ export class OrdersService {
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId));
     return toView(order, items);
+  }
+
+  /**
+   * The signed-in Customer's own order history (issue 10), newest first, each
+   * with its current status. Scoped to `customerId` from the verified token
+   * (ADR-0007), so a Customer only ever sees their own orders — never another's
+   * (IDOR, ADR-0012).
+   */
+  async listForCustomer(customerId: string): Promise<OrderView[]> {
+    const rows = await this.db
+      .select()
+      .from(orders)
+      .where(eq(orders.customerId, customerId))
+      .orderBy(desc(orders.createdAt));
+    return this.attachItems(rows, (order, items) => toView(order, items));
+  }
+
+  /**
+   * Every Order in the system (issue 10), newest first — the Admin's oversight
+   * view. Admin-only, enforced by the controller's `@Roles('admin')` guard, not
+   * here. Each row carries the owning `customerId` so the Next.js layer can
+   * resolve the customer's email on demand from Auth (ADR-0010/0011); the email
+   * is never stored on the order.
+   */
+  async listAll(): Promise<AdminOrderView[]> {
+    const rows = await this.db
+      .select()
+      .from(orders)
+      .orderBy(desc(orders.createdAt));
+    return this.attachItems(rows, (order, items) => ({
+      ...toView(order, items),
+      customerId: order.customerId,
+    }));
+  }
+
+  /**
+   * Loads the OrderItems for a batch of orders in one query and composes each
+   * order with its lines via `build`. Shared by the history and admin-oversight
+   * reads so neither issues an N+1 of per-order item queries.
+   */
+  private async attachItems<T>(
+    rows: Order[],
+    build: (order: Order, items: OrderItem[]) => T,
+  ): Promise<T[]> {
+    if (rows.length === 0) {
+      return [];
+    }
+    const items = await this.db
+      .select()
+      .from(orderItems)
+      .where(
+        inArray(
+          orderItems.orderId,
+          rows.map((o) => o.id),
+        ),
+      );
+    const byOrder = new Map<string, OrderItem[]>();
+    for (const item of items) {
+      const bucket = byOrder.get(item.orderId);
+      if (bucket) {
+        bucket.push(item);
+      } else {
+        byOrder.set(item.orderId, [item]);
+      }
+    }
+    return rows.map((order) => build(order, byOrder.get(order.id) ?? []));
+  }
+
+  /**
+   * Advances a `paid` Order to `shipped` — the Admin fulfillment step (issue 10,
+   * ADR-0010). Admin-only, enforced by the controller guard. The update matches
+   * only while the order is still `paid`, so a non-`paid` order (still awaiting
+   * payment, already shipped, or cancelled) is a 409 and a missing order is a 404
+   * — shipping is a deliberate one-way transition, not an idempotent saga event.
+   */
+  async markShipped(orderId: string): Promise<OrderStatusResult> {
+    const [row] = await this.db
+      .update(orders)
+      .set({ status: "shipped", updatedAt: new Date() })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "paid")))
+      .returning();
+    if (row) {
+      return { orderId, status: "shipped" };
+    }
+
+    const [existing] = await this.db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId));
+    if (!existing) {
+      throw new NotFoundException("Order not found");
+    }
+    throw new ConflictException(
+      `Cannot ship an order that is ${existing.status}; only a paid order can ship`,
+    );
   }
 
   /**

@@ -1,5 +1,19 @@
-import { IsEmail, IsIn, IsString, MaxLength, MinLength } from "class-validator";
-import { Roles, type Role } from "@workspace/contracts";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsEmail,
+  IsIn,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from "class-validator";
+import {
+  RESOLVE_EMAILS_MAX_IDS,
+  Roles,
+  type ResolveEmailsInput,
+  type Role,
+} from "@workspace/contracts";
 
 /**
  * Registration input. `class-validator` runs on every DTO (ADR-0012) so
@@ -34,4 +48,18 @@ export class LoginDto {
 export class ChangeRoleDto {
   @IsIn([Roles.Customer, Roles.Moderator, Roles.Admin])
   role!: Role;
+}
+
+/**
+ * Batch email-resolution input (issue 10, ADR-0011). An Admin passes the distinct
+ * `customerId`s behind a page of orders; Auth returns each known account's email
+ * so Next.js can compose the oversight view without the email ever being stored
+ * on an order (ADR-0010). `@IsUUID` on every id keeps a malformed batch a 400, and
+ * `@ArrayMaxSize` bounds the query (ADR-0012).
+ */
+export class ResolveEmailsDto implements ResolveEmailsInput {
+  @IsArray()
+  @ArrayMaxSize(RESOLVE_EMAILS_MAX_IDS)
+  @IsUUID(undefined, { each: true })
+  ids!: string[];
 }

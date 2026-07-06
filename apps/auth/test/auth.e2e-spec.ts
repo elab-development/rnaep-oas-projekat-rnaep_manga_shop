@@ -247,6 +247,84 @@ describe("auth (e2e)", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe("batch email resolution (issue 10)", () => {
+    async function seedAdmin(email: string): Promise<string> {
+      await register(email, "password123");
+      await pool.query("UPDATE users SET role = 'admin' WHERE email = $1", [
+        email,
+      ]);
+      return (await login(email, "password123")).body.accessToken as string;
+    }
+
+    const resolveEmails = (token: string | null, ids: string[]) => {
+      const req = request(app.getHttpServer())
+        .post("/auth/users/emails")
+        .send({ ids });
+      return token ? req.set("Authorization", `Bearer ${token}`) : req;
+    };
+
+    it("resolves a batch of ids to emails for an admin, omitting unknown ids", async () => {
+      const adminToken = await seedAdmin("resolver@example.com");
+      const a = await register("order-cust-a@example.com", "password123");
+      const b = await register("order-cust-b@example.com", "password123");
+      const unknown = "00000000-0000-0000-0000-000000000000";
+
+      const res = await resolveEmails(adminToken, [
+        a.body.id,
+        b.body.id,
+        unknown,
+      ]);
+
+      expect(res.status).toBe(200);
+      const resolved = res.body as Array<{ id: string; email: string }>;
+      // Both known users are resolved; the unknown id is simply absent.
+      expect(resolved).toHaveLength(2);
+      expect(resolved).toContainEqual({
+        id: a.body.id,
+        email: "order-cust-a@example.com",
+      });
+      expect(resolved).toContainEqual({
+        id: b.body.id,
+        email: "order-cust-b@example.com",
+      });
+      // Never leak the password hash through the resolver.
+      expect(
+        resolved.every(
+          (u) => (u as Record<string, unknown>).passwordHash === undefined,
+        ),
+      ).toBe(true);
+    });
+
+    it("returns an empty list for an empty batch", async () => {
+      const adminToken = await seedAdmin("resolver-empty@example.com");
+      const res = await resolveEmails(adminToken, []);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it("forbids a non-admin from resolving emails (exact @Roles('admin'))", async () => {
+      await register("nosy-cust@example.com", "password123");
+      const { body } = await login("nosy-cust@example.com", "password123");
+      const res = await resolveEmails(body.accessToken, [
+        "00000000-0000-0000-0000-000000000000",
+      ]);
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects an unauthenticated resolve with 401", async () => {
+      const res = await resolveEmails(null, [
+        "00000000-0000-0000-0000-000000000000",
+      ]);
+      expect(res.status).toBe(401);
+    });
+
+    it("400s a malformed batch (ids not uuids)", async () => {
+      const adminToken = await seedAdmin("resolver-bad@example.com");
+      const res = await resolveEmails(adminToken, ["not-a-uuid"]);
+      expect(res.status).toBe(400);
+    });
+  });
 });
 
 interface DecodedPayload {

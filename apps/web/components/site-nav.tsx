@@ -53,12 +53,16 @@ export function SiteNav() {
   if (pathname === "/login" || pathname === "/register") return null;
 
   const links = [...PUBLIC_LINKS];
-  if (session) links.push({ href: "/cart", label: "Cart" });
+  if (session) {
+    links.push({ href: "/cart", label: "Cart" });
+    links.push({ href: "/orders", label: "Orders" });
+  }
   if (isModerator(session)) {
     links.push({ href: "/moderator", label: "Catalog Desk", kicker: "Staff" });
   }
   if (isAdmin(session)) {
     links.push({ href: "/admin", label: "User Desk", kicker: "Staff" });
+    links.push({ href: "/admin/orders", label: "Order Desk", kicker: "Staff" });
   }
 
   function signOut() {

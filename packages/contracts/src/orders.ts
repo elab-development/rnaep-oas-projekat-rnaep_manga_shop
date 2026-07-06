@@ -98,6 +98,18 @@ export interface OrderView {
   createdAt: string;
 }
 
+/**
+ * An Order as exposed to an Admin overseeing the business (issue 10). Extends the
+ * customer-facing {@link OrderView} with the owning `customerId` so the Next.js
+ * layer can resolve the customer's email on demand from Auth (a batch lookup —
+ * the email is never duplicated onto the order, ADR-0010/0011). Returned only by
+ * the admin-gated all-orders endpoint, never to a Customer.
+ */
+export interface AdminOrderView extends OrderView {
+  /** The owning Customer's id (Auth-owned; ADR-0010 cross-service ref). */
+  customerId: string;
+}
+
 /** Max length of any single shipping free-text field, to bound stored input. */
 export const SHIPPING_FIELD_MAX_LENGTH = 200;
 

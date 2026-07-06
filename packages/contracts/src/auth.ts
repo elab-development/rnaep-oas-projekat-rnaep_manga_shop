@@ -25,3 +25,24 @@ export interface UserView {
 export interface ChangeRoleInput {
   role: Role;
 }
+
+/**
+ * Batch email-resolution request (issue 10, ADR-0011). An Admin overseeing
+ * orders resolves the customer behind each order on demand — the email lives only
+ * in Auth and is never duplicated onto the order (ADR-0010). The Next.js layer
+ * collects the distinct `customerId`s from a page of orders and asks Auth to
+ * resolve them all in one call rather than one request per order.
+ */
+export interface ResolveEmailsInput {
+  /** The user ids to resolve; unknown ids are simply omitted from the reply. */
+  ids: string[];
+}
+
+/** A single resolved account: its id paired with its email (no other fields). */
+export interface ResolvedEmail {
+  id: string;
+  email: string;
+}
+
+/** Upper bound on a single batch email-resolution request, to bound the query. */
+export const RESOLVE_EMAILS_MAX_IDS = 200;

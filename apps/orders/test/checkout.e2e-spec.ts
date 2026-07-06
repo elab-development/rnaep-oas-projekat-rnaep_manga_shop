@@ -7,6 +7,7 @@ import {
 } from "@testcontainers/postgresql";
 import { getJwtSecret } from "@workspace/auth-guard";
 import type {
+  AdminOrderView,
   OrderStatusResult,
   OrderView,
   ReservationResult,
@@ -105,9 +106,12 @@ describe("checkout (e2e)", () => {
 
   const server = () => app.getHttpServer();
 
-  function tokenFor(customerId: string): string {
+  function tokenFor(
+    customerId: string,
+    role: "customer" | "moderator" | "admin" = "customer",
+  ): string {
     return jwt.sign(
-      { sub: customerId, role: "customer", email: "c@example.com" },
+      { sub: customerId, role, email: `${role}@example.com` },
       getJwtSecret(),
       { expiresIn: "15m" },
     );
@@ -286,6 +290,107 @@ describe("checkout (e2e)", () => {
 
   it("404s an internal transition for an unknown order", async () => {
     const res = await markPaid("99999999-9999-9999-9999-999999999999");
+    expect(res.status).toBe(404);
+  });
+
+  // Order history, admin oversight, and ship (issue 10).
+  const listMyOrders = (token: string) =>
+    request(server()).get("/orders").set("Authorization", `Bearer ${token}`);
+  const listAllOrders = (token: string) =>
+    request(server())
+      .get("/orders/all")
+      .set("Authorization", `Bearer ${token}`);
+  const ship = (token: string, id: string) =>
+    request(server())
+      .patch(`/orders/${id}/ship`)
+      .set("Authorization", `Bearer ${token}`);
+
+  it("returns only the caller's own orders as history, newest first, with status", async () => {
+    const mine = tokenFor(CUST(11));
+    const other = tokenFor(CUST(12));
+    // Two orders for me, one for someone else.
+    await addItem(mine, "manga-one", 1);
+    const first = (await checkout(mine, SHIPPING)).body as OrderView;
+    await addItem(mine, "manga-two", 1);
+    const second = (await checkout(mine, SHIPPING)).body as OrderView;
+    await addItem(other, "manga-one", 1);
+    await checkout(other, SHIPPING);
+
+    const res = await listMyOrders(mine);
+    expect(res.status).toBe(200);
+    const orders = res.body as OrderView[];
+    // Exactly my two orders — the other Customer's order is never visible (IDOR).
+    expect(orders.map((o) => o.id).sort()).toEqual([first.id, second.id].sort());
+    // Newest first: the second order placed comes back first.
+    expect(orders[0].id).toBe(second.id);
+    expect(orders[0].status).toBe("pending_payment");
+  });
+
+  it("rejects order history without a token (login-required)", async () => {
+    expect((await request(server()).get("/orders")).status).toBe(401);
+  });
+
+  it("lets an admin list every order with its status and owning customer", async () => {
+    const cust = tokenFor(CUST(13));
+    await addItem(cust, "manga-one", 1);
+    const placed = (await checkout(cust, SHIPPING)).body as OrderView;
+
+    const admin = tokenFor(CUST(14), "admin");
+    const res = await listAllOrders(admin);
+    expect(res.status).toBe(200);
+    const orders = res.body as AdminOrderView[];
+    const row = orders.find((o) => o.id === placed.id);
+    // The admin view exposes the owning customerId so Next.js can resolve the
+    // email on demand from Auth (ADR-0010/0011) — the email is never on the order.
+    expect(row?.customerId).toBe(CUST(13));
+    expect(row?.status).toBe("pending_payment");
+  });
+
+  it("forbids a non-admin from listing all orders", async () => {
+    expect((await listAllOrders(tokenFor(CUST(15)))).status).toBe(403);
+    expect(
+      (await listAllOrders(tokenFor(CUST(15), "moderator"))).status,
+    ).toBe(403);
+  });
+
+  it("lets an admin ship a paid order (paid → shipped)", async () => {
+    const cust = tokenFor(CUST(16));
+    await addItem(cust, "manga-one", 1);
+    const placed = (await checkout(cust, SHIPPING)).body as OrderView;
+    await markPaid(placed.id);
+
+    const admin = tokenFor(CUST(17), "admin");
+    const res = await ship(admin, placed.id);
+    expect(res.status).toBe(200);
+    expect((res.body as OrderStatusResult).status).toBe("shipped");
+    // The customer sees the shipped status in their own history.
+    const mine = (await listMyOrders(cust)).body as OrderView[];
+    expect(mine.find((o) => o.id === placed.id)?.status).toBe("shipped");
+  });
+
+  it("refuses to ship an order that is not paid (409)", async () => {
+    const cust = tokenFor(CUST(18));
+    await addItem(cust, "manga-one", 1);
+    const placed = (await checkout(cust, SHIPPING)).body as OrderView;
+
+    const admin = tokenFor(CUST(19), "admin");
+    // Still pending_payment, not paid — the transition is rejected.
+    expect((await ship(admin, placed.id)).status).toBe(409);
+  });
+
+  it("forbids a non-admin from shipping an order", async () => {
+    const cust = tokenFor(CUST(20));
+    await addItem(cust, "manga-one", 1);
+    const placed = (await checkout(cust, SHIPPING)).body as OrderView;
+    await markPaid(placed.id);
+
+    // Even the owning customer cannot ship their own order — admin-only (ADR-0010).
+    expect((await ship(cust, placed.id)).status).toBe(403);
+  });
+
+  it("404s shipping an unknown order for an admin", async () => {
+    const admin = tokenFor(CUST(21), "admin");
+    const res = await ship(admin, "99999999-9999-9999-9999-999999999999");
     expect(res.status).toBe(404);
   });
 });
