@@ -4,13 +4,16 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from "@nestjs/common";
 import type {
+  OrderStatus,
+  OrderStatusResult,
   OrderView,
   ReservedLine,
   ShippingDetails,
 } from "@workspace/contracts";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { CartService } from "../cart/cart.service";
 import { DRIZZLE, type Database } from "../db/drizzle.module";
 import {
@@ -18,6 +21,7 @@ import {
   orderItems,
   orders,
   type Order,
+  type OrderItem,
 } from "../db/schema";
 import { CatalogClient } from "./catalog.client";
 
@@ -109,10 +113,85 @@ export class OrdersService {
 
     return toView(order, result.lines);
   }
+
+  /**
+   * Reads a single Order the caller owns (issue 09). Scoped to `customerId` from
+   * the verified token (ADR-0007), so a Customer can only ever read their own
+   * order — a foreign or unknown id is an indistinguishable 404 (IDOR, ADR-0012).
+   * Backs the payment success page ("confirming…") and Payments' Checkout Session
+   * creation, which forwards the customer's token so this same scoping applies.
+   */
+  async getOrder(customerId: string, orderId: string): Promise<OrderView> {
+    const [order] = await this.db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.id, orderId), eq(orders.customerId, customerId)));
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+    const items = await this.db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId));
+    return toView(order, items);
+  }
+
+  /**
+   * Advances an Order to `paid` on a verified `payment-succeeded` (ADR-0002,
+   * ADR-0010). Internal, service-to-service (Payments calls it from the Stripe
+   * webhook); the transition is guarded on `pending_payment` so it fires once, and
+   * a duplicate delivery (at-least-once, ADR-0013) is an idempotent no-op that
+   * echoes the current status.
+   */
+  markPaid(orderId: string): Promise<OrderStatusResult> {
+    return this.transition(orderId, "paid");
+  }
+
+  /**
+   * Advances an Order to `cancelled` on a `payment-failed` (declined or 30-min
+   * timeout) — the saga's compensation path (ADR-0002, ADR-0010). Guarded and
+   * idempotent exactly like {@link markPaid}.
+   */
+  markCancelled(orderId: string): Promise<OrderStatusResult> {
+    return this.transition(orderId, "cancelled");
+  }
+
+  /**
+   * Guarded, idempotent status transition out of `pending_payment`. The update
+   * matches only while the order is still `pending_payment`, so the terminal
+   * status is set exactly once; if nothing matched, an existing order echoes its
+   * current status (idempotent) and a missing order is a 404.
+   */
+  private async transition(
+    orderId: string,
+    to: Extract<OrderStatus, "paid" | "cancelled">,
+  ): Promise<OrderStatusResult> {
+    const [row] = await this.db
+      .update(orders)
+      .set({ status: to, updatedAt: new Date() })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "pending_payment")))
+      .returning();
+    if (row) {
+      return { orderId, status: to };
+    }
+
+    const [existing] = await this.db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId));
+    if (!existing) {
+      throw new NotFoundException("Order not found");
+    }
+    return { orderId, status: existing.status as OrderStatus };
+  }
 }
 
-/** Composes the stored Order row and its reserved lines into the public view. */
-function toView(order: Order, lines: ReservedLine[]): OrderView {
+/**
+ * Composes the stored Order row and its line items into the public view. Accepts
+ * either the freshly reserved lines (at checkout) or the persisted OrderItems (on
+ * a later read) — both carry the snapshotted title + price (ADR-0010).
+ */
+function toView(order: Order, lines: (ReservedLine | OrderItem)[]): OrderView {
   return {
     id: order.id,
     status: order.status as OrderView["status"],

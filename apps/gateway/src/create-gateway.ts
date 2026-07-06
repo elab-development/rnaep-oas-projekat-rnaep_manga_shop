@@ -8,6 +8,7 @@ const DEFAULT_FRONTEND_ORIGIN = "http://localhost:3010";
 const DEFAULT_AUTH_SERVICE_URL = "http://localhost:3001";
 const DEFAULT_CATALOG_SERVICE_URL = "http://localhost:3002";
 const DEFAULT_ORDERS_SERVICE_URL = "http://localhost:3003";
+const DEFAULT_PAYMENTS_SERVICE_URL = "http://localhost:3004";
 
 /**
  * Builds the thin API gateway (ADR-0011): the single CORS boundary locked to
@@ -61,6 +62,19 @@ export async function createGateway(): Promise<INestApplication> {
   app.use(
     createProxyMiddleware((pathname) => pathname.startsWith("/orders"), {
       target: process.env.ORDERS_URL ?? DEFAULT_ORDERS_SERVICE_URL,
+      changeOrigin: true,
+    }),
+  );
+
+  // Payments (issue 09) lives in the Payments service. `/payments/checkout-session`
+  // is login-required (Payments' own guard verifies the token); `/payments/webhook`
+  // is called by Stripe, not the browser — it carries no JWT (jwtFastFail lets a
+  // tokenless request through) and is authenticated by its signature instead
+  // (ADR-0008). Catalog/Orders `/internal/*` settle boundaries are still never
+  // exposed here (ADR-0011); Payments calls those service-to-service.
+  app.use(
+    createProxyMiddleware((pathname) => pathname.startsWith("/payments"), {
+      target: process.env.PAYMENTS_URL ?? DEFAULT_PAYMENTS_SERVICE_URL,
       changeOrigin: true,
     }),
   );

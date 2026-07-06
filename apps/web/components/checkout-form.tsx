@@ -13,6 +13,7 @@ import { Field, FieldError, FieldLabel } from "@workspace/ui/components/field";
 import { Input } from "@workspace/ui/components/input";
 import { CartError, fetchCartManga, getCart } from "@/lib/cart";
 import { CheckoutError, createOrder } from "@/lib/orders";
+import { PaymentError, startCheckoutSession } from "@/lib/payments";
 import { formatEur } from "@/lib/money";
 
 /** A cart line joined with its Catalog details (null if the manga was deleted). */
@@ -61,6 +62,7 @@ export function CheckoutForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState<OrderView | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,7 +105,11 @@ export function CheckoutForm() {
 
     setSubmitting(true);
     try {
-      setPlaced(await createOrder(shipping));
+      const order = await createOrder(shipping);
+      setPlaced(order);
+      // Straight to Stripe's hosted page: the order is reserved and awaiting
+      // payment, and the session is the 30-min hold clock (ADR-0008).
+      await redirectToPayment(order.id);
     } catch (err) {
       setSubmitError(
         err instanceof CheckoutError
@@ -114,7 +120,34 @@ export function CheckoutForm() {
     }
   }
 
-  if (placed) return <OrderConfirmation order={placed} />;
+  /**
+   * Opens a Stripe Checkout Session and hands the browser to Stripe's hosted page.
+   * On failure the order still exists (reserved, awaiting payment), so we surface a
+   * retry rather than losing it.
+   */
+  async function redirectToPayment(orderId: string): Promise<void> {
+    setPayError(null);
+    try {
+      const { url } = await startCheckoutSession(orderId);
+      window.location.href = url;
+    } catch (err) {
+      setPayError(
+        err instanceof PaymentError
+          ? err.message
+          : "Could not start payment. Please try again.",
+      );
+      setSubmitting(false);
+    }
+  }
+
+  if (placed)
+    return (
+      <PaymentRedirect
+        order={placed}
+        error={payError}
+        onRetry={() => redirectToPayment(placed.id)}
+      />
+    );
 
   if (loading) {
     return <p className="text-muted-foreground font-mono text-sm">Loading…</p>;
@@ -242,11 +275,14 @@ export function CheckoutForm() {
             disabled={submitting}
             className="brutal-btn mt-1 h-11 w-full text-sm font-semibold tracking-[0.2em] uppercase disabled:opacity-70"
           >
-            {submitting ? "Placing order…" : `Place order · ${formatEur(total)}`}
+            {submitting
+              ? "Placing order…"
+              : `Pay ${formatEur(total)} with card`}
           </Button>
           <p className="text-muted-foreground font-mono text-xs">
-            Card payment arrives in the next slice. Placing an order reserves your
-            copies and holds them while you pay.
+            You&apos;ll be taken to Stripe&apos;s secure checkout to pay by card.
+            Placing an order reserves your copies and holds them for 30 minutes
+            while you pay.
           </p>
         </form>
       </section>
@@ -254,41 +290,38 @@ export function CheckoutForm() {
   );
 }
 
-/** Post-checkout confirmation: the order is placed and awaiting payment. */
-function OrderConfirmation({ order }: { order: OrderView }) {
+/**
+ * Post-checkout: the order is placed and reserved, and we're handing the browser
+ * to Stripe's hosted checkout. If the redirect fails to start, the order still
+ * exists (awaiting payment) so we offer a retry rather than losing it.
+ */
+function PaymentRedirect({
+  order,
+  error,
+  onRetry,
+}: {
+  order: OrderView;
+  error: string | null;
+  onRetry: () => void;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <div className="brutal-box bg-card flex flex-col gap-2 p-8">
         <p className="text-foreground/60 font-mono text-xs font-bold tracking-[0.28em] uppercase">
-          Order placed · awaiting payment
+          Order placed · {error ? "awaiting payment" : "redirecting to payment"}
         </p>
         <p className="text-2xl font-black tracking-tight">
           Thanks, {order.shipping.recipientName.split(" ")[0]}!
         </p>
         <p className="text-muted-foreground">
-          Your copies are reserved and held while you pay. Card payment arrives in
-          the next slice.
+          {error
+            ? "Your copies are reserved and held for 30 minutes. Continue to Stripe's secure checkout to pay by card."
+            : "Taking you to Stripe's secure checkout to pay by card…"}
         </p>
         <p className="text-muted-foreground font-mono text-xs">
           Order <span className="text-foreground">{order.id}</span>
         </p>
       </div>
-
-      <ul className="flex flex-col gap-2">
-        {order.items.map((item) => (
-          <li
-            key={item.mangaId}
-            className="brutal-box bg-card flex items-center justify-between gap-4 p-4"
-          >
-            <span className="truncate font-bold tracking-tight">
-              {item.title}
-            </span>
-            <span className="text-muted-foreground font-mono text-sm">
-              {formatEur(item.price)} × {item.quantity}
-            </span>
-          </li>
-        ))}
-      </ul>
 
       <div className="brutal-box bg-card flex items-center justify-between p-4">
         <span className="font-mono text-sm font-bold uppercase">Total</span>
@@ -296,6 +329,25 @@ function OrderConfirmation({ order }: { order: OrderView }) {
           {formatEur(order.total)}
         </span>
       </div>
+
+      {error && (
+        <div className="flex flex-col gap-3">
+          <p
+            role="alert"
+            className="border-destructive bg-destructive/10 text-destructive border-l-4 px-3 py-2 text-sm font-medium"
+          >
+            {error}
+          </p>
+          <Button
+            type="button"
+            size="lg"
+            onClick={onRetry}
+            className="brutal-btn h-11 w-full text-sm font-semibold tracking-[0.2em] uppercase"
+          >
+            Continue to payment · {formatEur(order.total)}
+          </Button>
+        </div>
+      )}
 
       <Link
         href="/catalog"

@@ -100,3 +100,14 @@ export interface OrderView {
 
 /** Max length of any single shipping free-text field, to bound stored input. */
 export const SHIPPING_FIELD_MAX_LENGTH = 200;
+
+/**
+ * Internal (service-to-service) view of an Order, returned by Orders to Payments
+ * when it advances an order's status from a verified Stripe webhook (issue 09).
+ * Mounted behind `/internal/*`, a path the thin gateway never routes (ADR-0011),
+ * so it is reachable only inside the cluster, never from a browser.
+ */
+export interface OrderStatusResult {
+  orderId: string;
+  status: OrderStatus;
+}

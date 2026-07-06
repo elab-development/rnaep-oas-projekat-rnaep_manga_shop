@@ -1,8 +1,9 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type {
   ReservationResult,
   ReserveOrderInput,
   ReservedLine,
+  SettlementResult,
 } from "@workspace/contracts";
 import { isValidObjectId } from "mongoose";
 import { MANGA_MODEL, type MangaModel } from "../manga/manga.schema";
@@ -107,6 +108,70 @@ export class ReservationService {
 
     await this.reservations.create({ orderId, lines, status: "reserved" });
     return { status: "reserved", orderId, lines };
+  }
+
+  /**
+   * Commits a reservation on payment success (ADR-0002): the held copies leave
+   * physical stock for good — `quantity −= qty` **and** `reserved −= qty` per
+   * line. Idempotent on `orderId` (ADR-0013): the reserved → committed flip is a
+   * single guarded atomic update, so only the first commit moves stock; a
+   * duplicate finds the reservation already `committed` and echoes it without
+   * touching stock again.
+   */
+  async commit(orderId: string): Promise<SettlementResult> {
+    return this.settle(orderId, "committed", (line) => ({
+      "stock.quantity": -line.quantity,
+      "stock.reserved": -line.quantity,
+    }));
+  }
+
+  /**
+   * Releases a reservation on payment failure or 30-min timeout (ADR-0002, the
+   * compensation path): the hold is freed — `reserved −= qty` per line — while
+   * `quantity` (physical stock) is untouched, so the copies simply become
+   * available again. Idempotent on `orderId` exactly like {@link commit}.
+   */
+  async release(orderId: string): Promise<SettlementResult> {
+    return this.settle(orderId, "released", (line) => ({
+      "stock.reserved": -line.quantity,
+    }));
+  }
+
+  /**
+   * Shared commit/release core. Atomically flips the reservation from `reserved`
+   * to the target status and, only if that flip won (so it runs exactly once),
+   * applies `inc` to each held manga. A reservation that is already settled — or
+   * settled concurrently — yields no flip, so the stock move is skipped and the
+   * existing status is returned (idempotency, ADR-0013). No such reservation is a
+   * 404: there is nothing to settle.
+   */
+  private async settle(
+    orderId: string,
+    target: "committed" | "released",
+    inc: (line: HeldLine) => Record<string, number>,
+  ): Promise<SettlementResult> {
+    const held = await this.reservations
+      .findOneAndUpdate(
+        { orderId, status: "reserved" },
+        { $set: { status: target } },
+        { new: false },
+      )
+      .exec();
+
+    if (!held) {
+      const existing = await this.reservations.findOne({ orderId }).exec();
+      if (!existing) {
+        throw new NotFoundException(`No reservation for order ${orderId}`);
+      }
+      return { orderId, status: existing.status };
+    }
+
+    for (const line of held.lines) {
+      await this.manga
+        .updateOne({ _id: line.mangaId }, { $inc: inc(line) })
+        .exec();
+    }
+    return { orderId, status: target };
   }
 
   /** Releases holds taken earlier this pass so a rejected order leaves none. */

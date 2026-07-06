@@ -37,6 +37,7 @@ describe("gateway (e2e)", () => {
     process.env.FRONTEND_ORIGIN = ORIGIN;
     process.env.AUTH_SERVICE_URL = `http://127.0.0.1:${port}`;
     process.env.CATALOG_URL = `http://127.0.0.1:${port}`;
+    process.env.PAYMENTS_URL = `http://127.0.0.1:${port}`;
 
     app = await createGateway();
     await app.init();
@@ -101,6 +102,22 @@ describe("gateway (e2e)", () => {
 
     expect(res.status).toBe(200);
     expect(received.url).toBe("/auth/me");
+  });
+
+  it("proxies /payments/webhook to the payments service with no token (Stripe calls it)", async () => {
+    received = {};
+    const res = await request(app.getHttpServer())
+      .post("/payments/webhook")
+      .set("stripe-signature", "t=1,v1=abc")
+      .set("Content-Type", "application/json")
+      .send('{"id":"evt_1"}');
+
+    // Stripe carries no JWT; jwtFastFail passes the tokenless request through and
+    // the payments service authenticates it by signature instead (ADR-0008).
+    expect(res.status).toBe(200);
+    expect(received.method).toBe("POST");
+    expect(received.url).toBe("/payments/webhook");
+    expect(received.body).toBe('{"id":"evt_1"}');
   });
 
   it("locks CORS to the frontend origin and never echoes another origin", async () => {

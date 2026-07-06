@@ -5,7 +5,10 @@ import {
   MongoDBContainer,
   type StartedMongoDBContainer,
 } from "@testcontainers/mongodb";
-import type { ReservationResult } from "@workspace/contracts";
+import type {
+  ReservationResult,
+  SettlementResult,
+} from "@workspace/contracts";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import {
@@ -91,6 +94,15 @@ describe("catalog reservation (e2e)", () => {
 
   const reservedOf = async (id: string): Promise<number> =>
     (await manga.findById(id).exec())!.stock.reserved;
+
+  const quantityOf = async (id: string): Promise<number> =>
+    (await manga.findById(id).exec())!.stock.quantity;
+
+  const commit = (orderId: string) =>
+    request(server()).post(`/internal/reservations/${orderId}/commit`);
+
+  const release = (orderId: string) =>
+    request(server()).post(`/internal/reservations/${orderId}/release`);
 
   it("reserves the whole order all-or-nothing and holds the stock", async () => {
     const a = await seedManga({ title: "Alpha", price: 1500, quantity: 5 });
@@ -183,5 +195,68 @@ describe("catalog reservation (e2e)", () => {
       .post("/internal/reservations")
       .send({ orderId: "order-6", lines: [] });
     expect(res.status).toBe(400);
+  });
+
+  it("commits a hold: both quantity and reserved fall by the held amount (payment succeeded)", async () => {
+    const a = await seedManga({ quantity: 5 });
+    await reserve("order-commit", [{ mangaId: a, quantity: 2 }]);
+    expect(await reservedOf(a)).toBe(2);
+
+    const res = await commit("order-commit");
+    expect(res.status).toBe(201);
+    expect((res.body as SettlementResult).status).toBe("committed");
+
+    // Commit removes the copies from physical stock and clears the hold (ADR-0002).
+    expect(await quantityOf(a)).toBe(3);
+    expect(await reservedOf(a)).toBe(0);
+    const record = await reservations.findOne({ orderId: "order-commit" }).exec();
+    expect(record?.status).toBe("committed");
+  });
+
+  it("is idempotent on commit: a duplicate commit does not decrement stock twice", async () => {
+    const a = await seedManga({ quantity: 5 });
+    await reserve("order-commit-2", [{ mangaId: a, quantity: 2 }]);
+
+    await commit("order-commit-2");
+    const second = await commit("order-commit-2");
+
+    // The duplicate is a no-op that echoes the already-committed status.
+    expect((second.body as SettlementResult).status).toBe("committed");
+    expect(await quantityOf(a)).toBe(3);
+    expect(await reservedOf(a)).toBe(0);
+  });
+
+  it("releases a hold: reserved falls but quantity is untouched (payment failed/timeout)", async () => {
+    const a = await seedManga({ quantity: 5 });
+    await reserve("order-release", [{ mangaId: a, quantity: 2 }]);
+    expect(await reservedOf(a)).toBe(2);
+
+    const res = await release("order-release");
+    expect(res.status).toBe(201);
+    expect((res.body as SettlementResult).status).toBe("released");
+
+    // Release frees the hold; the copies return to available, quantity unchanged.
+    expect(await quantityOf(a)).toBe(5);
+    expect(await reservedOf(a)).toBe(0);
+    const record = await reservations.findOne({ orderId: "order-release" }).exec();
+    expect(record?.status).toBe("released");
+  });
+
+  it("is idempotent on release: a duplicate release does not free stock twice", async () => {
+    const a = await seedManga({ quantity: 5, reserved: 1 });
+    await reserve("order-release-2", [{ mangaId: a, quantity: 2 }]);
+    expect(await reservedOf(a)).toBe(3);
+
+    await release("order-release-2");
+    const second = await release("order-release-2");
+
+    expect((second.body as SettlementResult).status).toBe("released");
+    // Only this order's hold (2) was freed; the unrelated pre-existing hold stays.
+    expect(await reservedOf(a)).toBe(1);
+  });
+
+  it("404s a commit for an order with no reservation", async () => {
+    const res = await commit("order-never");
+    expect(res.status).toBe(404);
   });
 });

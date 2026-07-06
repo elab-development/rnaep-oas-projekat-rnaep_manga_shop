@@ -56,3 +56,19 @@ export async function createOrder(
   if (!res.ok) throw new CheckoutError(await messageFor(res), res.status);
   return (await res.json()) as OrderView;
 }
+
+/**
+ * Reads one of the signed-in Customer's own orders (issue 09). Backs the payment
+ * success page, which shows "confirming…" and polls this until the signed Stripe
+ * webhook has advanced the order to `paid` (or `cancelled`) — the redirect itself
+ * is never trusted as proof of payment (ADR-0008). Ownership is enforced by the
+ * server from the token; a foreign or unknown id is a 404 (ADR-0007, ADR-0012).
+ */
+export async function getOrder(orderId: string): Promise<OrderView> {
+  const res = await fetch(
+    `${gatewayUrl()}/orders/${encodeURIComponent(orderId)}`,
+    { headers: { ...authHeader() } },
+  );
+  if (!res.ok) throw new CheckoutError(await messageFor(res), res.status);
+  return (await res.json()) as OrderView;
+}

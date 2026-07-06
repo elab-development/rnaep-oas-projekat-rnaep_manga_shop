@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AuthGuardModule } from "@workspace/auth-guard";
 import { CartModule } from "../cart/cart.module";
 import { CatalogClient } from "./catalog.client";
+import { InternalOrdersController } from "./internal-orders.controller";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
@@ -12,7 +13,7 @@ import { OrdersService } from "./orders.service";
  */
 @Module({
   imports: [AuthGuardModule, CartModule],
-  controllers: [OrdersController],
+  controllers: [OrdersController, InternalOrdersController],
   providers: [OrdersService, CatalogClient],
 })
 export class OrdersModule {}
