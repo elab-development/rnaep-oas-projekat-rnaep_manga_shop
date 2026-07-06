@@ -14,6 +14,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
