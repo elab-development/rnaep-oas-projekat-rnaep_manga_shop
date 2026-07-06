@@ -1,5 +1,8 @@
-import { Body, Controller, Post } from "@nestjs/common";
-import type { ReservationResult } from "@workspace/contracts";
+import { Body, Controller, Param, Post } from "@nestjs/common";
+import type {
+  ReservationResult,
+  SettlementResult,
+} from "@workspace/contracts";
 import { ReserveOrderDto } from "./dto";
 import { ReservationService } from "./reservation.service";
 
@@ -21,5 +24,24 @@ export class ReservationController {
   @Post("reservations")
   reserve(@Body() dto: ReserveOrderDto): Promise<ReservationResult> {
     return this.reservations.reserve(dto);
+  }
+
+  /**
+   * Commit the hold when payment succeeds (`payment-succeeded`, ADR-0002): the
+   * copies leave physical stock. Idempotent on `orderId` so a duplicate delivery
+   * (at-least-once, ADR-0013) can't double-commit.
+   */
+  @Post("reservations/:orderId/commit")
+  commit(@Param("orderId") orderId: string): Promise<SettlementResult> {
+    return this.reservations.commit(orderId);
+  }
+
+  /**
+   * Release the hold when payment fails or times out (`payment-failed`, ADR-0002
+   * compensation): the copies become available again. Idempotent on `orderId`.
+   */
+  @Post("reservations/:orderId/release")
+  release(@Param("orderId") orderId: string): Promise<SettlementResult> {
+    return this.reservations.release(orderId);
   }
 }

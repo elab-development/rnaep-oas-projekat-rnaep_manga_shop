@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
 import { AuthGuardModule } from "@workspace/auth-guard";
 import { AppController } from "./app.controller";
-import { DatabaseModule } from "./database.module";
+import { DrizzleModule } from "./db/drizzle.module";
+import { PaymentsModule } from "./payments/payments.module";
 
 @Module({
-  imports: [DatabaseModule, AuthGuardModule],
+  imports: [DrizzleModule, AuthGuardModule, PaymentsModule],
   controllers: [AppController],
 })
 export class AppModule {}

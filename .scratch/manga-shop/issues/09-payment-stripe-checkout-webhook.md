@@ -1,6 +1,6 @@
 # 09. Payment (Stripe Checkout + webhook saga)
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -32,3 +32,57 @@ Respects ADR-0008 (hosted Checkout as the clock, webhook = source of truth, idem
 ## Blocked by
 
 - [08. Checkout → order + synchronous reservation](08-checkout-order-sync-reservation.md)
+
+## Comments
+
+Built the synchronous-first commit/release step of the saga (ADR-0003), the
+Payments service, and the pay-by-card UI flow.
+
+**What was built**
+
+- **Payments service** (Postgres/Drizzle, new): `payments` (one row per order,
+  `pending → succeeded/failed`) + `processed_events` (Stripe event-id idempotency)
+  tables + migration. `StripeService` wraps the two Stripe touch points — hosted
+  Checkout Session creation (`expires_at = now + 30 min`, the reservation clock)
+  and **real** `constructEvent` signature verification against
+  `STRIPE_WEBHOOK_SECRET`. `POST /payments/checkout-session` (JWT-guarded; reads
+  the order amount back from Orders with the customer's forwarded token, so the
+  amount is authoritative and ownership-scoped) and `POST /payments/webhook` (raw
+  body, no guard — authenticated by signature). Webhook drives the saga:
+  `completed` → Catalog commit + Orders paid + Payment succeeded; `expired` →
+  Catalog release + Orders cancelled + Payment failed. Idempotent on event id.
+- **Catalog**: `commit`/`release` on the Reservation (guarded atomic status flip
+  so stock moves exactly once) + `POST /internal/reservations/:orderId/{commit,release}`.
+- **Orders**: public `GET /orders/:id` (token-scoped, backs the success page and
+  Payments' amount read) + internal `POST /internal/orders/:id/{paid,cancelled}`
+  (guarded on `pending_payment`, idempotent).
+- **Gateway**: `/payments/*` → PAYMENTS_URL (`/internal/*` still unexposed).
+- **Web**: `lib/payments.ts` (start session), checkout redirects to Stripe after
+  placing the order, and `/checkout/success?orderId=…` shows "confirming…" and
+  polls order status (never trusts the redirect as proof of payment, ADR-0008).
+- **Contracts**: `payments.ts` (CreateCheckoutSessionInput/CheckoutSessionView/
+  PaymentStatus), catalog `ReservationStatus`/`SettlementResult`, orders
+  `OrderStatusResult`. **docker-compose**: payments gets CATALOG_URL/ORDERS_URL/
+  WEB_URL + Stripe secrets + depends_on catalog/orders.
+
+**Tests (all green; typecheck + lint clean)**: payments e2e 9 (real Postgres,
+Stripe session stubbed at the service seam but signatures verified for real,
+Catalog/Orders stubbed at the fetch edge) — session creation, login-required,
+not-owned 404, not-pending 409, success path (commit+paid+Payment succeeded),
+expiry/timeout path (release+cancelled+Payment failed), duplicate-event
+idempotency, forged-signature rejection. Catalog reservation +5 (commit/release +
+idempotency + 404). Orders checkout +5 (own-order read, IDOR 404, paid/cancelled
+idempotent, unknown-order 404). Gateway +1 (tokenless webhook proxied).
+
+**Notes for next iteration**
+
+- Webhook idempotency is record-first (claim event id, then settle): a downstream
+  failure *after* claiming leaves the order un-advanced until… nothing sweeps it
+  yet. This is the accepted ADR-0013 log-and-drop limitation; the Kafka phase
+  (issue 11) adds retry/replay and the 30-min auto-expiry sweep.
+- `expires_at` is exactly `now + 30 min` per ADR-0008; against live Stripe this is
+  the inclusive minimum, so add a small buffer if a real session is ever rejected.
+- No web test infra exists (prior UI slices shipped without it); the payment flow
+  is covered at the service transport boundaries, not in the browser layer.
+- Issue 10 (order history/detail + admin oversight + ship) builds on the new
+  `GET /orders/:id` and the `paid` status this slice produces.

@@ -18,4 +18,5 @@ export * from "./money";
 export * from "./auth";
 export * from "./catalog";
 export * from "./orders";
+export * from "./payments";
 export * from "./events";

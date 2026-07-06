@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import {
   CurrentUser,
   JwtAuthGuard,
@@ -29,5 +29,19 @@ export class OrdersController {
     @Body() dto: CreateOrderDto,
   ): Promise<OrderView> {
     return this.orders.checkout(user.userId, dto);
+  }
+
+  /**
+   * Reads one of the caller's own orders (issue 09). The owning customer comes
+   * from the token, never the path, so another Customer's id 404s (ADR-0007,
+   * ADR-0012). Backs the payment success page and Payments' session creation
+   * (which forwards the customer's token).
+   */
+  @Get(":id")
+  getOrder(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ): Promise<OrderView> {
+    return this.orders.getOrder(user.userId, id);
   }
 }

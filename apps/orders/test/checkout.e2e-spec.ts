@@ -7,6 +7,7 @@ import {
 } from "@testcontainers/postgresql";
 import { getJwtSecret } from "@workspace/auth-guard";
 import type {
+  OrderStatusResult,
   OrderView,
   ReservationResult,
   ReserveOrderInput,
@@ -220,5 +221,71 @@ describe("checkout (e2e)", () => {
     await addItem(token, "manga-one", 1);
     const res = await checkout(token, { ...SHIPPING, recipientName: "" });
     expect(res.status).toBe(400);
+  });
+
+  const getOrder = (token: string, id: string) =>
+    request(server())
+      .get(`/orders/${id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+  it("lets a Customer read their own order back (payment confirmation page)", async () => {
+    const token = tokenFor(CUST(6));
+    await addItem(token, "manga-one", 1);
+    const placed = (await checkout(token, SHIPPING)).body as OrderView;
+
+    const res = await getOrder(token, placed.id);
+    expect(res.status).toBe(200);
+    const order = res.body as OrderView;
+    expect(order.id).toBe(placed.id);
+    expect(order.status).toBe("pending_payment");
+    expect(order.items).toEqual([
+      { mangaId: "manga-one", title: "Alpha Vol. 1", price: 1500, quantity: 1 },
+    ]);
+  });
+
+  it("404s another Customer's order (IDOR: ownership from the token)", async () => {
+    const owner = tokenFor(CUST(7));
+    await addItem(owner, "manga-one", 1);
+    const placed = (await checkout(owner, SHIPPING)).body as OrderView;
+
+    const attacker = tokenFor(CUST(8));
+    const res = await getOrder(attacker, placed.id);
+    expect(res.status).toBe(404);
+  });
+
+  const markPaid = (id: string) =>
+    request(server()).post(`/internal/orders/${id}/paid`);
+  const markCancelled = (id: string) =>
+    request(server()).post(`/internal/orders/${id}/cancelled`);
+
+  it("advances an order to paid on payment success, idempotently", async () => {
+    const token = tokenFor(CUST(9));
+    await addItem(token, "manga-one", 1);
+    const placed = (await checkout(token, SHIPPING)).body as OrderView;
+
+    const first = await markPaid(placed.id);
+    expect(first.status).toBe(201);
+    expect((first.body as OrderStatusResult).status).toBe("paid");
+
+    // A duplicate webhook delivery must not re-transition (at-least-once, ADR-0013).
+    const second = await markPaid(placed.id);
+    expect((second.body as OrderStatusResult).status).toBe("paid");
+
+    expect((await getOrder(token, placed.id)).body.status).toBe("paid");
+  });
+
+  it("cancels an order on payment failure/timeout (compensation)", async () => {
+    const token = tokenFor(CUST(10));
+    await addItem(token, "manga-one", 1);
+    const placed = (await checkout(token, SHIPPING)).body as OrderView;
+
+    const res = await markCancelled(placed.id);
+    expect((res.body as OrderStatusResult).status).toBe("cancelled");
+    expect((await getOrder(token, placed.id)).body.status).toBe("cancelled");
+  });
+
+  it("404s an internal transition for an unknown order", async () => {
+    const res = await markPaid("99999999-9999-9999-9999-999999999999");
+    expect(res.status).toBe(404);
   });
 });

@@ -140,3 +140,22 @@ export interface ReservedLine {
 export type ReservationResult =
   | { status: "reserved"; orderId: string; lines: ReservedLine[] }
   | { status: "rejected"; orderId: string; reason: string };
+
+/**
+ * State of a per-order Reservation (CONTEXT.md: Reservation; ADR-0002). A hold is
+ * `reserved` until the payment saga either **commits** it (payment succeeded:
+ * `quantity −= qty; reserved −= qty`) or **releases** it (payment failed/timed
+ * out: `reserved −= qty`).
+ */
+export type ReservationStatus = "reserved" | "committed" | "released";
+
+/**
+ * Result of a commit/release on a Reservation (issue 09, ADR-0002). Returns the
+ * reservation's resulting `status` so the caller can confirm the settlement
+ * landed; both operations are idempotent on `orderId` (ADR-0013), so a duplicate
+ * settlement simply echoes the already-settled status without moving stock again.
+ */
+export interface SettlementResult {
+  orderId: string;
+  status: ReservationStatus;
+}
