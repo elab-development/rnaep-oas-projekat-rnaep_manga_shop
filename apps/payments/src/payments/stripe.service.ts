@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadGatewayException, Injectable, Logger } from "@nestjs/common";
 import type { OrderItemView } from "@workspace/contracts";
 import Stripe from "stripe";
 
@@ -41,6 +41,7 @@ export interface CreatedSession {
  */
 @Injectable()
 export class StripeService {
+  private readonly logger = new Logger(StripeService.name);
   private readonly stripe = new Stripe(secretKey());
 
   /**
@@ -50,27 +51,47 @@ export class StripeService {
    * `client_reference_id` so the webhook can tie the outcome back to the order.
    * Money is charged in EUR (ADR-0006); line prices are Catalog's, snapshotted
    * onto the order — never the client's.
+   *
+   * A Stripe failure (bad/missing `STRIPE_SECRET_KEY`, network, API error) is
+   * turned into a 502 (ADR-0009: no fallback, fail loudly) — never surfaced raw.
+   * Leaking Stripe's own status would mislead the client (its auth errors carry
+   * `401`, which reads as "not signed in") and echo the API key, so the real
+   * error is logged server-side and a generic gateway error is returned.
    */
   async createCheckoutSession(
     params: CheckoutSessionParams,
   ): Promise<CreatedSession> {
-    const session = await this.stripe.checkout.sessions.create({
-      mode: "payment",
-      expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-      client_reference_id: params.orderId,
-      metadata: { orderId: params.orderId },
-      line_items: params.items.map((item) => ({
-        quantity: item.quantity,
-        price_data: {
-          currency: "eur",
-          unit_amount: item.price,
-          product_data: { name: item.title },
-        },
-      })),
-      success_url: `${webBaseUrl()}/checkout/success?orderId=${params.orderId}`,
-      cancel_url: `${webBaseUrl()}/checkout/cancelled?orderId=${params.orderId}`,
-    });
-    return { id: session.id, url: session.url ?? "" };
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await this.stripe.checkout.sessions.create({
+        mode: "payment",
+        expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+        client_reference_id: params.orderId,
+        metadata: { orderId: params.orderId },
+        line_items: params.items.map((item) => ({
+          quantity: item.quantity,
+          price_data: {
+            currency: "eur",
+            unit_amount: item.price,
+            product_data: { name: item.title },
+          },
+        })),
+        success_url: `${webBaseUrl()}/checkout/success?orderId=${params.orderId}`,
+        cancel_url: `${webBaseUrl()}/checkout/cancelled?orderId=${params.orderId}`,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Stripe Checkout Session creation failed for order ${params.orderId}: ${(err as Error).message}`,
+      );
+      throw new BadGatewayException("Could not start payment with Stripe");
+    }
+    if (!session.url) {
+      this.logger.error(
+        `Stripe returned a session with no URL for order ${params.orderId}`,
+      );
+      throw new BadGatewayException("Could not start payment with Stripe");
+    }
+    return { id: session.id, url: session.url };
   }
 
   /**

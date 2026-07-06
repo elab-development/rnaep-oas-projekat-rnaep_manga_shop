@@ -25,6 +25,8 @@ async function messageFor(res: Response): Promise<string> {
   if (res.status === 404) return "That order could not be found.";
   if (res.status === 409)
     return "This order is no longer awaiting payment.";
+  if (res.status === 502)
+    return "We couldn't reach the card payment provider. Please try again shortly.";
   if (res.status === 503)
     return "Payments are unavailable right now. Please try again shortly.";
   try {
