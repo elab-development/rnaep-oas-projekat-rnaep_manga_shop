@@ -5,12 +5,17 @@ import {
   Injectable,
   Logger,
 } from "@nestjs/common";
-import type { CheckoutSessionView } from "@workspace/contracts";
+import type {
+  CheckoutSessionView,
+  PaymentFailedEvent,
+  PaymentSucceededEvent,
+} from "@workspace/contracts";
+import { Topics } from "@workspace/contracts";
+import { KafkaProducer } from "@workspace/messaging";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { DRIZZLE, type Database } from "../db/drizzle.module";
 import { payments, processedEvents } from "../db/schema";
-import { CatalogClient } from "./catalog.client";
 import { OrdersClient } from "./orders.client";
 import { StripeService } from "./stripe.service";
 
@@ -30,8 +35,8 @@ export class PaymentsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly stripe: StripeService,
-    private readonly catalog: CatalogClient,
     private readonly orders: OrdersClient,
+    private readonly producer: KafkaProducer,
   ) {}
 
   /**
@@ -119,24 +124,49 @@ export class PaymentsService {
     }
   }
 
-  /** Payment succeeded: commit the hold, mark the order paid, record success. */
+  /**
+   * Payment succeeded: emit `payment-succeeded` and record the Payment succeeded
+   * (issue 11). The event is Payments' single announcement of the outcome — Orders
+   * (mark `paid`) and Catalog (commit the hold) each consume it in their own group
+   * (ADR-0002/0013), replacing the sync-phase HTTP settle calls. Keyed by `orderId`.
+   */
   private async settleSuccess(orderId: string): Promise<void> {
-    await this.catalog.commit(orderId);
-    await this.orders.markPaid(orderId);
+    await this.producer.emit<PaymentSucceededEvent>(
+      Topics.PaymentSucceeded,
+      orderId,
+      { orderId, amount: await this.amountFor(orderId) },
+    );
     await this.db
       .update(payments)
       .set({ status: "succeeded", updatedAt: new Date() })
       .where(eq(payments.orderId, orderId));
   }
 
-  /** Payment failed/timed out: release the hold, cancel the order, record failure. */
+  /**
+   * Payment failed/timed out: emit `payment-failed` and record the Payment failed
+   * (issue 11). Orders cancels the order and Catalog releases the hold — the
+   * compensation path — each consuming it in its own group (ADR-0002/0013). An
+   * expired Stripe session is a `timeout` (ADR-0008). Keyed by `orderId`.
+   */
   private async settleFailure(orderId: string): Promise<void> {
-    await this.catalog.release(orderId);
-    await this.orders.markCancelled(orderId);
+    await this.producer.emit<PaymentFailedEvent>(
+      Topics.PaymentFailed,
+      orderId,
+      { orderId, reason: "timeout" },
+    );
     await this.db
       .update(payments)
       .set({ status: "failed", updatedAt: new Date() })
       .where(eq(payments.orderId, orderId));
+  }
+
+  /** The order's EUR amount (integer cents) recorded when its session was opened. */
+  private async amountFor(orderId: string): Promise<number> {
+    const [row] = await this.db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderId, orderId));
+    return row?.amount ?? 0;
   }
 
   /**

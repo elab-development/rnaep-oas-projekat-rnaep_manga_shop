@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import type { OrderStatusResult, OrderView } from "@workspace/contracts";
+import type { OrderView } from "@workspace/contracts";
 
 /** Where the Orders service lives; defaults to its docker-compose host port. */
 function ordersUrl(): string {
@@ -11,15 +11,16 @@ function ordersUrl(): string {
 }
 
 /**
- * Payments' client for the Orders service (ADR-0003, ADR-0011). Two transports:
+ * Payments' client for reading an order from the Orders service (ADR-0003,
+ * ADR-0011). {@link getOrder} reads an order **on behalf of the Customer** — it
+ * forwards the caller's Bearer token so Orders re-verifies it and scopes the read
+ * to that customer (ADR-0007). Payments never trusts a client-supplied amount; the
+ * total comes from this authoritative read.
  *
- * - {@link getOrder} reads an order **on behalf of the Customer** — it forwards
- *   the caller's Bearer token so Orders re-verifies it and scopes the read to
- *   that customer (ADR-0007). Payments never trusts a client-supplied amount; the
- *   total comes from this authoritative read.
- * - {@link markPaid}/{@link markCancelled} advance the order from the verified
- *   Stripe webhook via Orders' internal, gateway-unexposed boundary. Both are
- *   idempotent on `orderId`, so a webhook retry is safe (ADR-0013).
+ * This is a plain query, not a saga step, so it stays synchronous REST even after
+ * the saga moves to Kafka (issue 11): the sync-phase status-advance calls
+ * (`markPaid`/`markCancelled`) are gone — Payments now emits `payment-succeeded` /
+ * `payment-failed` and Orders advances its own status from those events.
  */
 @Injectable()
 export class OrdersClient {
@@ -44,32 +45,5 @@ export class OrdersClient {
       throw new ServiceUnavailableException("Orders read failed");
     }
     return (await res.json()) as OrderView;
-  }
-
-  /** Advance the order to `paid` on payment success. */
-  markPaid(orderId: string): Promise<OrderStatusResult> {
-    return this.transition(orderId, "paid");
-  }
-
-  /** Advance the order to `cancelled` on payment failure/timeout (compensation). */
-  markCancelled(orderId: string): Promise<OrderStatusResult> {
-    return this.transition(orderId, "cancelled");
-  }
-
-  private async transition(
-    orderId: string,
-    op: "paid" | "cancelled",
-  ): Promise<OrderStatusResult> {
-    const url = `${ordersUrl()}/internal/orders/${orderId}/${op}`;
-    let res: Response;
-    try {
-      res = await fetch(url, { method: "POST" });
-    } catch {
-      throw new ServiceUnavailableException("Orders unavailable");
-    }
-    if (!res.ok) {
-      throw new ServiceUnavailableException(`Orders ${op} transition failed`);
-    }
-    return (await res.json()) as OrderStatusResult;
   }
 }

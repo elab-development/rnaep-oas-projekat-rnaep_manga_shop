@@ -17,6 +17,8 @@
     "STRIPE_WEBHOOK_SECRET",
     "FRANKFURTER_URL",
     "JIKAN_URL",
+    "KAFKA_BROKERS",
+    "KAFKA_CLIENT_ID",
     "NEXT_PUBLIC_GATEWAY_URL"
   ],
   "tasks": {
