@@ -81,8 +81,8 @@ jobs:
       # One broken Dockerfile shouldn't hide the state of the others.
       fail-fast: false
       matrix:
-        # The five containerised services (apps/web has no Dockerfile).
-        app: [auth, catalog, orders, payments, gateway]
+        # The five NestJS services plus the Next.js web frontend.
+        app: [auth, catalog, orders, payments, gateway, web]
     steps:
       - uses: actions/checkout@v4
 

@@ -10,8 +10,25 @@
 
 const TOKEN_KEY = "manga-shop.token";
 
-/** Base URL of the API gateway. */
+/**
+ * Base URL of the API gateway.
+ *
+ * The browser must reach the gateway at its publicly published address
+ * (`NEXT_PUBLIC_GATEWAY_URL`, inlined at build time). Server components and
+ * server actions run *inside* the web container, where that public address
+ * (localhost) points at the container itself, not the gateway — so on the
+ * server we prefer `GATEWAY_INTERNAL_URL` (e.g. `http://gateway:3000` on the
+ * compose network), read at runtime. Both fall back to localhost so host
+ * `pnpm dev`, where everything shares localhost, keeps working unchanged.
+ */
 export function gatewayUrl(): string {
+  if (typeof window === "undefined") {
+    return (
+      process.env.GATEWAY_INTERNAL_URL ??
+      process.env.NEXT_PUBLIC_GATEWAY_URL ??
+      "http://localhost:3000"
+    );
+  }
   return process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:3000";
 }
 
