@@ -101,3 +101,57 @@ Optional env (sensible dev fallbacks if unset):
 
 Auth runs Drizzle migrations at boot; the schema lives in `apps/auth/drizzle/`
 (`pnpm --filter auth exec drizzle-kit generate` regenerates after schema edits).
+
+## Payments & Stripe (slice 09)
+
+Payment uses Stripe's **hosted Checkout Session** (ADR-0008): the browser is
+redirected to Stripe's page, and the **signature-verified webhook — not the
+redirect — is the source of truth** for the outcome. The session's 30-minute
+`expires_at` is the reservation clock; `completed` commits stock and marks the
+order `paid`, `expired`/failure releases stock and cancels it.
+
+This needs two secrets. Without a valid `STRIPE_SECRET_KEY`, "Pay with card"
+fails loudly with a **502** ("couldn't reach the card payment provider") — never
+a misleading sign-in prompt.
+
+| Var                     | Required for                | Where to get it                                     |
+| ----------------------- | --------------------------- | --------------------------------------------------- |
+| `STRIPE_SECRET_KEY`     | reaching Stripe checkout    | Dashboard → Developers → API keys (Test mode, `sk_test_…`) |
+| `STRIPE_WEBHOOK_SECRET` | orders **confirming** (paid)| Stripe CLI `stripe listen` (`whsec_…`, stable per account) |
+
+### Where to put the secrets
+
+The image **never** contains secrets — it's a generic artifact; config is
+injected at runtime (`.env` files are excluded via `.dockerignore`). One
+git-ignored file, `apps/payments/.env`, feeds both local runtimes:
+
+```bash
+cp apps/payments/.env.example apps/payments/.env   # then fill in your test keys
+```
+
+| Runtime                          | How `apps/payments/.env` is loaded                    |
+| -------------------------------- | ----------------------------------------------------- |
+| `pnpm dev`                       | `apps/payments/src/load-env.ts` reads it at startup   |
+| `docker compose --profile full`  | `env_file:` injects it into the container             |
+| GHCR image (CI / prod)           | inject at runtime (`--env-file`, `-e`, or a secrets store) — **not** in `.env` |
+
+Under docker-compose the `environment:` block overrides the file's dev-only
+`localhost` URLs (`DATABASE_URL`, `CATALOG_URL`, …) with the in-cluster
+hostnames, so leave those commented out in `.env`.
+
+### Confirming payments locally
+
+To reach Stripe's checkout page you only need `STRIPE_SECRET_KEY`. For an order
+to actually flip to `paid`, Stripe must reach the webhook — run the Stripe CLI in
+a second terminal and copy the `whsec_…` it prints into `apps/payments/.env`:
+
+```bash
+stripe listen --forward-to localhost:3000/payments/webhook
+```
+
+That CLI secret is **stable across runs** for your account — set it once. A
+deployed endpoint registered in the Stripe Dashboard gets its **own** signing
+secret; use that value for `STRIPE_WEBHOOK_SECRET` in production.
+
+Payments runs Drizzle migrations at boot; the schema lives in
+`apps/payments/drizzle/`.
