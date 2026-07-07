@@ -1,6 +1,6 @@
 # 03. Homepage landing page (rails + chrome + ISR)
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -50,3 +50,65 @@ All new UI uses only the ADR-0014 closed vocabulary (zero-radius, ink borders, h
 ## Blocked by
 
 - [01. Catalog: Featured flag + New Arrivals ordering](01-catalog-featured-new-arrivals.md)
+
+## Comments
+
+**Done** on branch `feat/03-homepage-landing-page` (merged to `develop`).
+
+What was built (all in `apps/web`):
+
+- **`lib/catalog.ts`** — `CatalogQuery` gains `featured?`; extracted a `catalogQuery()`
+  query-string builder. Two cacheable rail helpers, `fetchFeatured()` (`featured=true`,
+  limit 4) and `fetchNewArrivals()` (default newest-first, limit 4), fetch with
+  `next: { revalidate: 3600 }` (exported `HOME_RAIL_LIMIT` / `HOME_REVALIDATE`) so
+  they don't force the ISR route dynamic. `fetchGenres()` gained an optional
+  `{ revalidate }` so the homepage genre nav is cacheable while the catalog page
+  keeps `no-store`. Catalog/detail fetches are unchanged (`no-store`).
+- **`lib/recency.ts`** — `isNewArrival(createdAt)`: true within a 30-day window
+  (drives the NEW badge; `createdAt` is from slice 01).
+- **`components/new-badge.tsx`** — presentational NEW badge, ADR-0014 yellow
+  `bg-primary` accent (mirrors `FeaturedBadge`).
+- **`components/manga-card.tsx`** — opt-in `showNew?` prop: renders `NewBadge`
+  absolute top-left when set **and** the manga is recent. Catalog grid leaves it
+  off; only the New Arrivals rail passes it. Featured badge stays top-right.
+- **`components/site-footer.tsx`** — server-rendered footer: brand, Browse
+  (catalog, genres) + Account (sign in, register) nav, copyright. Static year
+  constant to keep the ISR HTML deterministic.
+- **`app/page.tsx`** — rewritten landing page: hero (single `h1`, one primary CTA
+  into the catalog, over `bg-dots`) → genre quick-nav (`?genre=`, capped at 12) →
+  Featured rail → New Arrivals rail (`showNew`) → value props (4 real-capability
+  cells) → final CTA (inked panel + yellow button) → footer. `export const
+  revalidate = 3600` (ADR-0016).
+
+Key decisions:
+
+- **ISR literal, not imported.** Next statically parses the `revalidate` segment
+  export, so it must be an inline literal (`3600`), kept equal to `HOME_REVALIDATE`
+  by a comment — an imported constant fails the build ("Invalid segment
+  configuration export").
+- **Graceful rail degradation.** Because the homepage now prerenders at build under
+  ISR (unlike the per-request `force-dynamic` catalog), a rail fetch failing (e.g.
+  gateway unreachable at build time) would crash the whole web build. Each homepage
+  fetch has a `.catch()` that logs and returns empty, so the shell + empty states
+  render and recover on the next revalidate — extends story 13 ("an un-curated shop
+  must not look broken") to a transiently unreachable one.
+- **NEW badge is opt-in per rail**, not computed unconditionally in `MangaCard`, so
+  the badge stays exclusive to New Arrivals and never leaks onto the catalog grid.
+- **ADR-0014 compliance:** only closed-vocabulary classes (`bg-primary`, `bg-card`,
+  `bg-foreground`/`text-background`, `border-chip`, `brutal-box`/`-lg`/`brutal-btn`,
+  `bg-dots`); the one arbitrary value is the ADR-sanctioned `--dots` override on the
+  inked final-CTA panel. No stray colour.
+
+Feedback loops: `pnpm typecheck` green, `pnpm lint` (0 errors — only the
+pre-existing unrelated `GATEWAY_INTERNAL_URL` warning), `pnpm --filter web build`
+green (route table confirms `/` = Revalidate 1h, `/catalog` + `/catalog/[id]` stay
+dynamic), full `pnpm test` green (backend untouched). Manual verification against
+the running dev server (`:3010`): server HTML has exactly one `h1`, `nav`/`section`/
+`footer` landmarks, all landing copy, tiles linking to `/catalog/[id]`, 4 NEW badges,
+Featured badges, and genre chips — per the PRD's web-verification approach (no
+frontend test harness, deliberately).
+
+Follow-ups: unblocks **04** (on-page SEO plumbing — metadata/canonical/robots/
+sitemap on top of this finished page). The catalog default sort is already
+newest-first from slice 01, so the New Arrivals "Browse the catalog" link lands on
+newest-first results with no extra work.
