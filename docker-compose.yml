@@ -309,9 +309,14 @@ services:
 
   # ---- Observability -------------------------------------------------------
   # On their own `observability` profile, not `full`: the metrics stack is
-  # optional and only useful once the services are running, so it's opt-in.
-  # Bring it up alongside the app:
+  # optional and only useful once the services are running, so it's opt-in. Only
+  # the human operator starts it, and only by hand:
   #   docker compose --profile full --profile observability up --build
+  #
+  # !! AI AGENTS / AUTOMATED TESTS: NEVER start this profile (or the
+  #    prom/prometheus or grafana/grafana images by any other means). On this
+  #    machine they exhaust resources and wedge the Docker daemon, breaking every
+  #    other `docker compose` command. See AGENTS.md → "Hard constraints".
   prometheus:
     profiles: ["observability"]
     image: prom/prometheus:v3.12.0
