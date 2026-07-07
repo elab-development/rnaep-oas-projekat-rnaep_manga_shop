@@ -13,28 +13,37 @@ audited items.
 | Threat | Disposition | ADR |
 | --- | --- | --- |
 | CSRF | Mitigated by design — header-token auth, cookies deliberately avoided, so the browser never auto-attaches credentials cross-site. No CSRF tokens. | ADR-0012, ADR-0007 |
-| XSS | Load-bearing risk. React/Next auto-escaping, no `dangerouslySetInnerHTML`, strict CSP, `class-validator` on every DTO. | ADR-0012 |
+| XSS | Load-bearing risk. React/Next auto-escaping, no `dangerouslySetInnerHTML`, `class-validator` on every DTO; a hardening CSP (`script-src` allows `unsafe-inline`, every other directive locked — see §1). | ADR-0012 |
 | IDOR | Ownership derived from the verified token, never the path/body; per-resource scoping on cart and order. | ADR-0007, ADR-0010 |
 | SQL injection | Drizzle parameterized queries only; no string-built SQL. | ADR-0012 |
 | Cross-origin abuse | CORS locked to the single frontend origin at the gateway. | ADR-0011 |
 
 ## Audited controls
 
-### 1. Strict Content-Security-Policy (XSS) — added in this pass
+### 1. Content-Security-Policy (XSS) — added in this pass
 
-- A per-request nonce CSP is emitted for every document response in
-  `apps/web/middleware.ts`. `script-src` is strict: `'self' 'nonce-…'
-  'strict-dynamic'` — only same-origin and nonce-carrying scripts run.
-- Next stamps the nonce onto its own framework scripts (it reads the nonce back
-  from the CSP request header); `next-themes`' inline anti-flash script receives
-  the same nonce via its `nonce` prop in `apps/web/app/layout.tsx`.
-- `style-src` keeps `'unsafe-inline'` deliberately — injected styles cannot
-  execute JavaScript, and it avoids fighting `next/font`'s injected styles for no
-  security gain. `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`,
-  and `form-action 'self'` close the usual bypasses. `connect-src` is limited to
-  self + the configured gateway origin.
-- Defense-in-depth response headers set alongside the CSP: `X-Content-Type-Options:
-  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
+- A CSP is emitted for every response as a **static header** via `async headers()`
+  in `apps/web/next.config.ts`, alongside `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+- **`script-src` allows `'self' 'unsafe-inline'`** — a deliberate deviation from
+  ADR-0012's "strict `script-src`". The App Router injects its own inline
+  hydration/RSC-streaming scripts (`self.__next_f.push(...)`) whose content is
+  per-response and cannot be statically hashed; a nonce-strict policy would force
+  the entire app into per-request dynamic rendering (a nonce middleware + reading
+  `headers()` in the root layout). We chose the simpler static header and accept
+  `'unsafe-inline'` for scripts, which also covers `next-themes`' inline anti-flash
+  script. `'unsafe-eval'` and the HMR websocket are added **in dev only**;
+  production evals nothing.
+- **Consequence & compensating controls:** with `'unsafe-inline'`, the CSP no
+  longer blocks an injected inline `<script>`, so the load-bearing XSS defenses are
+  the ones below — React/Next output escaping, **no `dangerouslySetInnerHTML`**,
+  and `class-validator` on every DTO — not the CSP. The CSP is defense-in-depth
+  that still hardens everything else.
+- Every **other** directive stays locked down: `default-src 'self'`,
+  `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'` (clickjacking),
+  `form-action 'self'`, `img-src` limited to self/data/https (external cover art),
+  `connect-src` limited to self + the configured gateway origin,
+  `upgrade-insecure-requests` (prod).
 
 ### 2. No `dangerouslySetInnerHTML` (XSS)
 
