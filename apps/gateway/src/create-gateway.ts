@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { installGatewayMetrics } from "@workspace/observability";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { AppModule } from "./app.module";
 import { jwtFastFail } from "./jwt-fast-fail.middleware";
@@ -20,6 +21,10 @@ export async function createGateway(): Promise<INestApplication> {
   // Disable Nest's body parser so proxied request bodies stream through
   // untouched to the downstream service.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Register metrics first so the recorder wraps every downstream proxy and
+  // serves GET /metrics before the path→service routing (issue 12).
+  installGatewayMetrics(app, "gateway");
 
   app.enableCors({
     origin: process.env.FRONTEND_ORIGIN ?? DEFAULT_FRONTEND_ORIGIN,

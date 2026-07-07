@@ -1,9 +1,10 @@
-# Prometheus scrape config (slice 01 baseline).
+# Prometheus scrape config (slice 12 — observability).
 #
-# The services do not expose /metrics yet — that lands in slice 12
-# (observability). For now Prometheus scrapes itself so the container boots with
-# a valid config; the per-service jobs are declared so slice 12 only has to add
-# the metrics endpoints, not the wiring.
+# Every service exposes /metrics via @workspace/observability: request rate,
+# latency histogram, and error counts, each sample tagged with a `service`
+# label. Prometheus scrapes itself plus the five services; Grafana reads it back
+# through the provisioned dashboards. The `service` label rides on the metrics
+# themselves, so no per-target relabeling is needed here.
 global:
   scrape_interval: 15s
 
