@@ -51,11 +51,19 @@ The services fall back to those `localhost` databases when `DATABASE_URL` /
 
 ### Full stack in containers
 
-The `full` profile additionally builds and runs the five services plus
-Prometheus and Grafana:
+The `full` profile additionally builds and runs the five services plus the
+Next.js web app:
 
 ```bash
 docker compose --profile full up --build
+```
+
+Prometheus + Grafana live on a separate, opt-in `observability` profile (they're
+only useful once the services are running). Add it to bring the metrics stack up
+alongside the app:
+
+```bash
+docker compose --profile full --profile observability up --build
 ```
 
 ### Boot smoke check
@@ -71,8 +79,9 @@ done
 # each should print: {"status":"ok","service":"<name>"}
 ```
 
-Prometheus is at <http://localhost:9090>, Grafana at <http://localhost:3030>
-(admin/admin). See [Observability](#observability-slice-12) below.
+With the `observability` profile up, Prometheus is at <http://localhost:9090>
+and Grafana at <http://localhost:3030> (admin/admin). See
+[Observability](#observability-slice-12) below.
 
 ## Observability (slice 12)
 
