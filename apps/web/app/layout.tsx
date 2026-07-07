@@ -1,4 +1,5 @@
 import { Space_Grotesk, Space_Mono } from "next/font/google"
+import { headers } from "next/headers"
 
 import "@workspace/ui/globals.css"
 import { SiteNav } from "@/components/site-nav"
@@ -17,11 +18,14 @@ const fontMono = Space_Mono({
   variable: "--font-mono",
 })
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // The CSP middleware mints a per-request nonce; hand it to next-themes so its
+  // inline anti-flash script is trusted under our strict script-src (ADR-0012).
+  const nonce = (await headers()).get("x-nonce") ?? undefined
   return (
     <html
       lang="en"
@@ -29,7 +33,7 @@ export default function RootLayout({
       className={cn("antialiased", fontMono.variable, "font-sans", fontSans.variable)}
     >
       <body>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <SiteNav />
           {children}
         </ThemeProvider>
