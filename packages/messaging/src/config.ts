@@ -8,13 +8,15 @@ import { logLevel } from "kafkajs";
 
 /**
  * The broker list. Defaults to the docker-compose Kafka's **host** listener
- * (`localhost:29092`, published for `pnpm dev`) so host apps work without a
+ * (`127.0.0.1:29092`, published for `pnpm dev`) so host apps work without a
  * `.env` file; docker-compose injects `kafka:9092` (the in-cluster listener) for
  * the containerized `full`-profile services. The two ports are the same single
  * broker reached over its two advertised listeners — see docker-compose.yml.
+ * Uses 127.0.0.1, not `localhost`: on Windows `localhost` resolves to IPv6
+ * `::1` first, which Docker Desktop's loopback doesn't forward to the container.
  */
 export function kafkaBrokers(): string[] {
-  return (process.env.KAFKA_BROKERS ?? "localhost:29092")
+  return (process.env.KAFKA_BROKERS ?? "127.0.0.1:29092")
     .split(",")
     .map((b) => b.trim())
     .filter(Boolean);

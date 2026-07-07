@@ -12,8 +12,11 @@ export const MONGO_CONNECTION = Symbol("MONGO_CONNECTION");
 
 function mongoUri(): string {
   // Falls back to the docker-compose Mongo published on the host so `pnpm dev`
-  // works without a `.env` file (see docker-compose.yml).
-  return process.env.MONGODB_URI ?? "mongodb://localhost:27017/catalog";
+  // works without a `.env` file (see docker-compose.yml). Uses 127.0.0.1, not
+  // `localhost`: on Windows `localhost` resolves to IPv6 `::1` first, which
+  // Docker Desktop's loopback doesn't forward to the container — the driver then
+  // hangs until server-selection times out.
+  return process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/catalog";
 }
 
 /**

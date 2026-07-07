@@ -5,9 +5,14 @@ import {
 } from "@nestjs/common";
 import type { OrderView } from "@workspace/contracts";
 
-/** Where the Orders service lives; defaults to its docker-compose host port. */
+/**
+ * Where the Orders service lives; defaults to its docker-compose host port.
+ * Uses 127.0.0.1, not `localhost`: on Windows `localhost` resolves to IPv6
+ * `::1` first, adding a needless hop. Orders listens dual-stack, so IPv4
+ * reaches it directly.
+ */
 function ordersUrl(): string {
-  return process.env.ORDERS_URL ?? "http://localhost:3003";
+  return process.env.ORDERS_URL ?? "http://127.0.0.1:3003";
 }
 
 /**

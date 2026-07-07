@@ -6,10 +6,13 @@ import { AppModule } from "./app.module";
 import { jwtFastFail } from "./jwt-fast-fail.middleware";
 
 const DEFAULT_FRONTEND_ORIGIN = "http://localhost:3010";
-const DEFAULT_AUTH_SERVICE_URL = "http://localhost:3001";
-const DEFAULT_CATALOG_SERVICE_URL = "http://localhost:3002";
-const DEFAULT_ORDERS_SERVICE_URL = "http://localhost:3003";
-const DEFAULT_PAYMENTS_SERVICE_URL = "http://localhost:3004";
+// Service targets use 127.0.0.1, not `localhost`: on Windows `localhost`
+// resolves to IPv6 `::1` first, adding a needless hop. The services listen
+// dual-stack, so IPv4 reaches them directly.
+const DEFAULT_AUTH_SERVICE_URL = "http://127.0.0.1:3001";
+const DEFAULT_CATALOG_SERVICE_URL = "http://127.0.0.1:3002";
+const DEFAULT_ORDERS_SERVICE_URL = "http://127.0.0.1:3003";
+const DEFAULT_PAYMENTS_SERVICE_URL = "http://127.0.0.1:3004";
 
 /**
  * Builds the thin API gateway (ADR-0011): the single CORS boundary locked to

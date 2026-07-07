@@ -24,10 +24,12 @@ const MIGRATIONS_FOLDER = join(__dirname, "..", "..", "drizzle");
 
 function connectionString(): string {
   // Falls back to the docker-compose Postgres published on the host so
-  // `pnpm dev` works without a `.env` file (see docker-compose.yml).
+  // `pnpm dev` works without a `.env` file (see docker-compose.yml). Uses
+  // 127.0.0.1, not `localhost`: on Windows `localhost` resolves to IPv6 `::1`
+  // first, which Docker Desktop's loopback doesn't forward to the container.
   return (
     process.env.DATABASE_URL ??
-    "postgres://payments:payments@localhost:55434/payments"
+    "postgres://payments:payments@127.0.0.1:55434/payments"
   );
 }
 
