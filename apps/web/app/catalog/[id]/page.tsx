@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AddToCart } from "@/components/add-to-cart";
 import { AvailabilityBadge } from "@/components/availability-badge";
 import { DisplayPriceLabels } from "@/components/display-prices";
+import { FeaturedBadge } from "@/components/featured-badge";
 import { fetchManga } from "@/lib/catalog";
 import { formatEur } from "@/lib/money";
 
@@ -47,6 +48,7 @@ export default async function MangaDetailPage({ params }: DetailPageProps) {
 
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
+            {manga.featured && <FeaturedBadge className="self-start" />}
             <h1 className="font-[family-name:var(--font-sans)] text-4xl font-bold tracking-tight uppercase">
               {manga.title}
             </h1>

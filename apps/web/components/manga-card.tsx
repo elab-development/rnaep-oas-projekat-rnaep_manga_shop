@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { MangaView } from "@workspace/contracts";
 import { AvailabilityBadge } from "@/components/availability-badge";
 import { DisplayPriceLabels } from "@/components/display-prices";
+import { FeaturedBadge } from "@/components/featured-badge";
 import { formatEur } from "@/lib/money";
 
 /**
@@ -14,8 +15,11 @@ export function MangaCard({ manga }: { manga: MangaView }) {
   return (
     <Link
       href={`/catalog/${manga.id}`}
-      className="brutal-box brutal-press group flex flex-col bg-card hover:-translate-y-0.5"
+      className="brutal-box brutal-press group relative flex flex-col bg-card hover:-translate-y-0.5"
     >
+      {manga.featured && (
+        <FeaturedBadge className="absolute top-2 right-2 z-10" />
+      )}
       <div className="border-b bg-muted aspect-[2/3] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

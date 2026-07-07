@@ -13,6 +13,7 @@ import {
   updateStock,
 } from "@/lib/moderation";
 import { formatEur } from "@/lib/money";
+import { FeaturedBadge } from "@/components/featured-badge";
 import { MangaForm } from "@/components/manga-form";
 
 type View = { kind: "list" } | { kind: "create" } | { kind: "edit"; manga: MangaView };
@@ -218,11 +219,7 @@ function MangaRow({
           <h3 className="min-w-0 truncate font-bold tracking-tight">
             {manga.title}
           </h3>
-          {manga.featured && (
-            <span className="border-chip bg-primary text-primary-foreground shrink-0 px-1.5 py-0.5 font-mono text-[0.6rem] font-bold tracking-wider uppercase">
-              ★ Featured
-            </span>
-          )}
+          {manga.featured && <FeaturedBadge className="shrink-0" />}
         </div>
         <p className="text-muted-foreground truncate text-sm">{manga.author}</p>
         <p className="font-mono text-sm">
