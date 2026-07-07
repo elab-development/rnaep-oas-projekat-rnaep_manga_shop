@@ -1,10 +1,10 @@
 # ISSUES
 
 Issues and the PRD for this repo live as local markdown files under
-`.scratch/manga-shop/`:
+`.scratch/homepage-landing-seo/`:
 
-- PRD: `.scratch/manga-shop/PRD.md`
-- Issues: `.scratch/manga-shop/issues/<NN>-<slug>.md`, numbered from `01`
+- PRD: `.scratch/homepage-landing-seo/PRD.md`
+- Issues: `.scratch/homepage-landing-seo/issues/<NN>-<slug>.md`, numbered from `01`
 
 Read the PRD first, then read every issue file. Each issue has a `Status:` line
 near the top recording its triage state (see `docs/agents/triage-labels.md`):
@@ -84,6 +84,13 @@ Use /tdd to complete the task.
 
 This is a pnpm + turborepo monorepo (`apps/*`, `packages/*`). Add code in the
 right workspace and wire it through the workspace, not as a standalone project.
+
+For any UI work, respect the project's existing UI guidelines and conventions —
+match the established design system, component patterns, tokens, and styling
+already used in the codebase; do not introduce a divergent look. When creating or
+styling web components, pages, or any user-facing interface, use the
+`frontend-design` skill to produce polished, on-brand UI rather than generic
+markup.
 
 # FEEDBACK LOOPS
 
