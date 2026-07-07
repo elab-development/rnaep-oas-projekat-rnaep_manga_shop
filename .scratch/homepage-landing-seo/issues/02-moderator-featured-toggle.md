@@ -1,6 +1,6 @@
 # 02. Moderator Featured toggle (curation UI)
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -26,3 +26,38 @@ Client role-gating is UX-only, consistent with prior web increments — the Cata
 ## Blocked by
 
 - [01. Catalog: Featured flag + New Arrivals ordering](01-catalog-featured-new-arrivals.md)
+
+## Comments
+
+**Done** on branch `feat/02-moderator-featured-toggle` (merged to `develop`).
+
+What was built:
+
+- **`lib/moderation.ts`**: added `setFeatured(id, featured)` — a thin wrapper over
+  the existing `updateManga(id, { featured })` PATCH path (slice 01; no dedicated
+  endpoint per the PRD). Returns the persisted `MangaView`, so callers reflect the
+  read model. The gateway/catalog service re-enforces `@MinRole('moderator')`; a
+  customer token surfaces a 403 through the existing `ModerationError` handling.
+- **`components/moderator-panel.tsx`** (`MangaRow`): each management row now
+  surfaces Featured state at a glance with a yellow (`bg-primary`) **★ Featured**
+  chip beside the title, and a toggle button in the actions cluster
+  (`☆ Feature` / filled-yellow `★ Featured`, `aria-pressed`, descriptive `title`).
+  Toggling calls `setFeatured(id, !manga.featured)` then `onChanged()`, which
+  refetches the catalog — so the control reflects the persisted `MangaView.featured`
+  rather than optimistic-only state. Shares the row's existing `busy`/`error`
+  state with the stock/delete actions.
+
+Design (ADR-0014): Featured maps to the closed-set **yellow "attention/act"** accent
+(`bg-primary` / `text-primary-foreground`), reusing `.brutal-btn` for the control
+skin and `border-chip` for the indicator chip — zero-radius, ink borders, hard
+offset shadow, no stray colour.
+
+Testing: web layer has no automated harness (deliberate, per PRD); client gating is
+UX-only and service-enforced. Verified by `pnpm typecheck` (green), `pnpm lint`
+(0 errors — only the pre-existing unrelated `GATEWAY_INTERNAL_URL` warning), the
+web production build (green), and the full `pnpm test` suite (catalog 54 / payments
+13 / orders 32, all green — unchanged, backend untouched).
+
+Follow-ups: unblocks nothing new directly (slice 03 is only blocked by 01), but the
+toggle is what keeps the `CONTEXT.md` glossary honest once slice 03 ships the
+Featured rail. No blockers.
