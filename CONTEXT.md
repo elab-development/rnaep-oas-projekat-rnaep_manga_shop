@@ -27,6 +27,14 @@ _Avoid_: permission set, role list (it is one value, not a collection).
 **Manga**:
 The central product — a physical manga volume with title, author, genres, price, cover, and stock. Lives in the Catalog service (MongoDB).
 
+**Featured**:
+An editorial flag on a Manga marking it for the homepage **Featured** section. Set by a Moderator (and therefore Admin) as a catalog-management action; it is a human curation choice, never derived from sales, stock, or recency. Distinct from New Arrivals (below).
+_Avoid_: selected, promoted, spotlight (the one term is "Featured").
+
+**New Arrivals**:
+The automatic homepage rail of the most recently added Manga, ordered newest-first by a Manga's creation time. No human curates it; it is purely time-ordered. Distinct from Featured, which is curated. Creation time also serves as the Catalog's default newest-first sort.
+_Avoid_: latest, recent, newest (as a section name — the rail is "New Arrivals").
+
 **Stock**:
 The inventory state of a Manga, held as two numbers: `quantity` (physical copies on hand) and `reserved` (copies held for unpaid orders). **Available = `quantity − reserved`.**
 _Avoid_: inventory (use "stock"), zalihe.

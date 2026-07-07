@@ -28,7 +28,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn("antialiased", fontMono.variable, "font-sans", fontSans.variable)}
     >
-      <body>
+      <body className="bg-dots">
         <ThemeProvider>
           <SiteNav />
           {children}
