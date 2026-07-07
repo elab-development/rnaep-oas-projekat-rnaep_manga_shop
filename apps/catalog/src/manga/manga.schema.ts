@@ -28,6 +28,20 @@ export interface MangaDoc {
   price: number;
   stock: StockDoc;
   jikanId?: number;
+  /**
+   * Editorial Featured flag (CONTEXT.md: Featured) — a human curation choice for
+   * the homepage rail. Optional on the type because the schema default (`false`)
+   * fills it in on write, so callers (seed data, create) never set it; never
+   * derived from sales/stock.
+   */
+  featured?: boolean;
+  /**
+   * Creation time, maintained by Mongoose `timestamps`. Surfaced here so the
+   * catalog can order New Arrivals newest-first and expose it on `MangaView`.
+   * Optional on the type because legacy documents may predate it (backfilled
+   * from the `ObjectId` — a defensive no-op in practice).
+   */
+  createdAt?: Date;
 }
 
 const StockSchema = new Schema<StockDoc>(
@@ -52,6 +66,7 @@ export const MangaSchema = new Schema<MangaDoc>(
       default: (): StockDoc => ({ quantity: 0, reserved: 0 }),
     },
     jikanId: { type: Number, required: false },
+    featured: { type: Boolean, required: true, default: false },
   },
   { timestamps: true, collection: "manga" },
 );
@@ -60,6 +75,8 @@ export const MangaSchema = new Schema<MangaDoc>(
 // membership. A compound index keeps both cheap as the catalog grows.
 MangaSchema.index({ title: 1 });
 MangaSchema.index({ genres: 1 });
+// New Arrivals / default sort is newest-first by creation time (CONTEXT.md).
+MangaSchema.index({ createdAt: -1 });
 
 export type MangaModel = Model<MangaDoc>;
 

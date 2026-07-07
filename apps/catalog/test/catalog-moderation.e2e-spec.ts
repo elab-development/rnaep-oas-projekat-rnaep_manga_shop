@@ -10,11 +10,7 @@ import type { JikanSuggestion, MangaView, Role } from "@workspace/contracts";
 import { createHmac } from "node:crypto";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
-import {
-  MANGA_MODEL,
-  type MangaDoc,
-  type MangaModel,
-} from "../src/manga/manga.schema";
+import { MANGA_MODEL, type MangaModel } from "../src/manga/manga.schema";
 
 /**
  * Catalog moderation transport-boundary tests (issue 05). Drives the write side
@@ -225,6 +221,75 @@ describe("catalog moderation (e2e)", () => {
       expect(view.price).toBe(2999);
       const stored = await model.findById(id).exec();
       expect(stored?.jikanId).toBe(2);
+    });
+  });
+
+  describe("featured toggle (@MinRole('moderator'))", () => {
+    const createManga = async () => {
+      const created = await request(server())
+        .post("/catalog/manga")
+        .set("Authorization", `Bearer ${token("moderator")}`)
+        .send(validBody());
+      return (created.body as MangaView).id;
+    };
+
+    it("lets a moderator flag a manga as Featured and it persists", async () => {
+      const id = await createManga();
+
+      const patched = await request(server())
+        .patch(`/catalog/manga/${id}`)
+        .set("Authorization", `Bearer ${token("moderator")}`)
+        .send({ featured: true });
+      expect(patched.status).toBe(200);
+      expect((patched.body as MangaView).featured).toBe(true);
+
+      // Persists on the read model and survives a reload.
+      const stored = await model.findById(id).exec();
+      expect(stored?.featured).toBe(true);
+      const detail = await request(server()).get(`/catalog/manga/${id}`);
+      expect((detail.body as MangaView).featured).toBe(true);
+    });
+
+    it("lets a moderator unflag a Featured manga (rotate what is promoted)", async () => {
+      const id = await createManga();
+      await request(server())
+        .patch(`/catalog/manga/${id}`)
+        .set("Authorization", `Bearer ${token("moderator")}`)
+        .send({ featured: true });
+
+      const off = await request(server())
+        .patch(`/catalog/manga/${id}`)
+        .set("Authorization", `Bearer ${token("moderator")}`)
+        .send({ featured: false });
+      expect(off.status).toBe(200);
+      expect((off.body as MangaView).featured).toBe(false);
+
+      const stored = await model.findById(id).exec();
+      expect(stored?.featured).toBe(false);
+    });
+
+    it("lets an admin set Featured too (ADR-0005 hierarchy)", async () => {
+      const id = await createManga();
+
+      const patched = await request(server())
+        .patch(`/catalog/manga/${id}`)
+        .set("Authorization", `Bearer ${token("admin")}`)
+        .send({ featured: true });
+      expect(patched.status).toBe(200);
+      expect((patched.body as MangaView).featured).toBe(true);
+    });
+
+    it("rejects a customer Featured toggle with 403", async () => {
+      const id = await createManga();
+
+      const patched = await request(server())
+        .patch(`/catalog/manga/${id}`)
+        .set("Authorization", `Bearer ${token("customer")}`)
+        .send({ featured: true });
+      expect(patched.status).toBe(403);
+
+      const stored = await model.findById(id).exec();
+      expect(stored?.featured).toBe(false);
     });
   });
 
