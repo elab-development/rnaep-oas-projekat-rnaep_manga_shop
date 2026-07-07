@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev --concurrency=11",
+    "dev": "turbo dev stripe:webhook --concurrency=12",
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck",
