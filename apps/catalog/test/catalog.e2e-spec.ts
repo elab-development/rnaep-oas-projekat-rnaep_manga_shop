@@ -57,6 +57,19 @@ describe("catalog browse & search (e2e)", () => {
     const model = app.get<MangaModel>(MANGA_MODEL, { strict: false });
     await model.deleteMany({});
     await model.insertMany(FIXTURES);
+    // `insertMany` stamps `createdAt` with the (shared) insert time, so rewrite
+    // it to each fixture's explicit, index-spaced value through the raw driver
+    // (which bypasses Mongoose's auto-timestamp). Titles are unique, so each
+    // update hits exactly one document, making the newest-first sort
+    // deterministic instead of a tie on a single batch timestamp.
+    await Promise.all(
+      FIXTURES.map((f) =>
+        model.collection.updateOne(
+          { title: f.title },
+          { $set: { createdAt: f.createdAt } },
+        ),
+      ),
+    );
   });
 
   afterAll(async () => {
@@ -112,6 +125,34 @@ describe("catalog browse & search (e2e)", () => {
     >;
     expect(body.total).toBe(1);
     expect(body.items[0].title).toBe("Naruto Special");
+  });
+
+  it("defaults to newest-first by creation time (New Arrivals ordering)", async () => {
+    const body = (await list()).body as Paginated<MangaView>;
+    // FIXTURES are ordered oldest→newest, so the newest-first list is their
+    // reverse — independent of how the service computes the sort.
+    const expected = [...FIXTURES].reverse().map((m) => m.title);
+    expect(body.items.map((m) => m.title)).toEqual(expected);
+  });
+
+  it("filters to Featured manga only, newest-first", async () => {
+    const body = (await list("?featured=true")).body as Paginated<MangaView>;
+    expect(body.total).toBe(3);
+    expect(body.items.every((m) => m.featured)).toBe(true);
+    // The three FEATURED fixtures, newest-first by creation time.
+    expect(body.items.map((m) => m.title)).toEqual([
+      "Kaguya-sama",
+      "Frieren",
+      "Akira",
+    ]);
+  });
+
+  it("exposes featured and an ISO createdAt on each item", async () => {
+    const body = (await list("?q=bakuman")).body as Paginated<MangaView>;
+    const item = body.items[0];
+    expect(item.featured).toBe(false);
+    expect(typeof item.createdAt).toBe("string");
+    expect(Number.isNaN(Date.parse(item.createdAt))).toBe(false);
   });
 
   it("filters by genre", async () => {
@@ -225,11 +266,20 @@ function mk(
     description: `${title} description`,
     price,
     stock: { quantity, reserved },
+    featured: false,
   };
 }
 
+/** Titles the shop has curated into the Featured rail (CONTEXT.md: Featured). */
+const FEATURED_TITLES = new Set(["Akira", "Frieren", "Kaguya-sama"]);
+const BASE_CREATED = Date.parse("2026-01-01T00:00:00.000Z");
+const ONE_DAY = 86_400_000;
+
 // Twelve manga; five carry "Romance". "Naruto Special" is the lone title match
-// for the search test; "Akira" (10/3) is the availability target.
+// for the search test; "Akira" (10/3) is the availability target. The array is
+// ordered oldest→newest: each fixture's `createdAt` is one day after the last,
+// so the newest-first default sort is exactly this array reversed. Three titles
+// are Featured for the `featured=true` filter.
 const FIXTURES: MangaDoc[] = [
   mk("Akira", ["Action", "Sci-Fi"], 10, 3, 1500),
   mk("Bakuman", ["Comedy", "Romance"], 5, 0, 900),
@@ -243,4 +293,8 @@ const FIXTURES: MangaDoc[] = [
   mk("Jujutsu Kaisen", ["Action", "Supernatural"], 15, 0, 1099),
   mk("Kaguya-sama", ["Comedy", "Romance"], 11, 0, 950),
   mk("Naruto Special", ["Action", "Adventure"], 25, 0, 999),
-];
+].map((doc, i) => ({
+  ...doc,
+  featured: FEATURED_TITLES.has(doc.title),
+  createdAt: new Date(BASE_CREATED + i * ONE_DAY),
+}));

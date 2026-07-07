@@ -36,6 +36,18 @@ export interface MangaView {
   stock: StockView;
   /** Derived: `stock.quantity − stock.reserved`. */
   available: number;
+  /**
+   * Editorial flag: `true` when a Moderator/Admin has curated this Manga into
+   * the homepage **Featured** rail (CONTEXT.md: Featured). Never derived from
+   * sales, stock, or recency; a Manga is created un-featured.
+   */
+  featured: boolean;
+  /**
+   * Creation time as an ISO-8601 string (CONTEXT.md: New Arrivals). Drives the
+   * newest-first **New Arrivals** ordering / catalog default sort, and the web's
+   * NEW-badge recency check.
+   */
+  createdAt: string;
 }
 
 /**
@@ -75,11 +87,25 @@ export interface CreateMangaInput {
 /**
  * A partial edit to a Manga's data and price. Stock is updated through its own
  * endpoint, and `jikanId` is immutable once set (ADR-0009: edits are never
- * clobbered by Jikan, and Jikan never re-clobbers them either).
+ * clobbered by Jikan, and Jikan never re-clobbers them either). The editorial
+ * `featured` flag also rides this partial-update path (PRD: no dedicated
+ * endpoint) — a Manga is created un-featured and featured by a separate edit.
  */
 export type UpdateMangaInput = Partial<
   Omit<CreateMangaInput, "quantity" | "jikanId">
->;
+> & {
+  /** Curate this Manga into (or out of) the homepage Featured rail. */
+  featured?: boolean;
+};
+
+/**
+ * Optional filters for the paginated catalog list, shared between the Catalog
+ * service and the web fetch client. `featured: true` narrows the list to the
+ * curated Featured rail; the list stays a {@link Paginated}<{@link MangaView}>.
+ */
+export interface ListMangaFilter {
+  featured?: boolean;
+}
 
 /** A single page of results plus the counters a pager needs. */
 export interface Paginated<T> {

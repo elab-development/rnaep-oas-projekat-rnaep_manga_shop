@@ -1,4 +1,9 @@
-import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  type OnModuleInit,
+} from "@nestjs/common";
 import type {
   CreateMangaInput,
   MangaView,
@@ -7,6 +12,7 @@ import type {
 } from "@workspace/contracts";
 import {
   isValidObjectId,
+  Types,
   type FilterQuery,
   type HydratedDocument,
 } from "mongoose";
@@ -18,21 +24,39 @@ interface ListParams {
   limit: number;
   q?: string;
   genres?: string[];
+  /** Narrow to curated Featured manga (CONTEXT.md) when set. */
+  featured?: boolean;
 }
 
 @Injectable()
-export class MangaService {
+export class MangaService implements OnModuleInit {
   constructor(
     @Inject(MANGA_MODEL) private readonly model: MangaModel,
     private readonly currency: CurrencyService,
   ) {}
 
   /**
+   * Defensive backfill (PRD story 29): give any legacy document missing
+   * `createdAt` one derived from its `ObjectId` generation time, so New Arrivals
+   * ordering is correct from day one even for pre-timestamps rows. Expected to
+   * be a no-op — Mongoose `timestamps` has been on since the schema's creation.
+   */
+  async onModuleInit(): Promise<void> {
+    await this.model
+      .updateMany({ createdAt: { $exists: false } }, [
+        { $set: { createdAt: { $toDate: "$_id" } } },
+      ])
+      .exec();
+  }
+
+  /**
    * A page of the catalog, optionally filtered by title and/or genres. Title
    * search is token-based: every whitespace-separated term must appear somewhere
    * in the title (case-insensitive, any order) — so "special naruto" matches
    * "Naruto Special". Genres filter is case-insensitive OR — a manga matching any
-   * selected genre is included. Sorted by title for a stable order across pages.
+   * selected genre is included. An optional `featured` filter narrows to the
+   * curated Featured rail (CONTEXT.md). Sorted newest-first by creation time —
+   * the New Arrivals ordering and the catalog's default sort (CONTEXT.md).
    */
   async list(params: ListParams): Promise<Paginated<MangaView>> {
     const clauses: FilterQuery<MangaDoc>[] = [];
@@ -48,13 +72,16 @@ export class MangaService {
         },
       });
     }
+    if (params.featured !== undefined) {
+      clauses.push({ featured: params.featured });
+    }
     const filter: FilterQuery<MangaDoc> =
       clauses.length > 0 ? { $and: clauses } : {};
 
     const total = await this.model.countDocuments(filter).exec();
     const docs = await this.model
       .find(filter)
-      .sort({ title: 1 })
+      .sort({ createdAt: -1 })
       .skip((params.page - 1) * params.limit)
       .limit(params.limit)
       .exec();
@@ -178,6 +205,12 @@ function toView(doc: HydratedDocument<MangaDoc>, rates?: Rates): MangaView {
     display: rates ? convert(doc.price, rates) : undefined,
     stock: { quantity: doc.stock.quantity, reserved: doc.stock.reserved },
     available: doc.stock.quantity - doc.stock.reserved,
+    featured: doc.featured ?? false,
+    // Prefer the persisted timestamp; fall back to the ObjectId's generation
+    // time so New Arrivals ordering holds even for a legacy row (defensive).
+    createdAt: (
+      doc.createdAt ?? (doc._id as Types.ObjectId).getTimestamp()
+    ).toISOString(),
   };
 }
 

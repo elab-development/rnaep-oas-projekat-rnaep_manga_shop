@@ -55,6 +55,7 @@ export class MangaController {
       limit: query.limit,
       q: query.q,
       genres: query.genre,
+      featured: query.featured,
     });
   }
 

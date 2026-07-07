@@ -2,6 +2,7 @@ import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -56,6 +57,17 @@ export class ListMangaQuery {
   @MaxLength(60, { each: true })
   @ArrayMaxSize(30)
   genre?: string[];
+
+  /**
+   * Narrow the list to curated Featured manga (CONTEXT.md). Coerced from the
+   * `?featured=true|false` query string; any other value is a 400.
+   */
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === "true" ? true : value === "false" ? false : value,
+  )
+  @IsBoolean()
+  featured?: boolean;
 }
 
 /** Query for the Jikan add-time search (`?q=`). Moderator-gated in the controller. */
@@ -163,6 +175,14 @@ export class UpdateMangaDto implements UpdateMangaInput {
   @Min(0)
   @Max(PRICE_MAX)
   price?: number;
+
+  /**
+   * Curate this Manga into (or out of) the homepage Featured rail (CONTEXT.md).
+   * The Featured toggle rides this partial-update path — no dedicated endpoint.
+   */
+  @IsOptional()
+  @IsBoolean()
+  featured?: boolean;
 }
 
 /** Body for updating a Manga's stock `quantity` (moderator-gated). */
