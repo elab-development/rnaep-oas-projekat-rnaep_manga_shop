@@ -3,8 +3,10 @@ import { gatewayUrl } from "./auth";
 
 /**
  * Server-side catalog client. The frontend talks ONLY to the API gateway
- * (ADR-0011); browse is Guest-accessible so these calls carry no token. Used
- * from Next.js server components, which fetch fresh on each request.
+ * (ADR-0011); browse is Guest-accessible so these calls carry no token. The
+ * catalog / detail fetches render fresh per request (`no-store`); the homepage
+ * rail helpers below are cacheable, because the homepage is served under ISR
+ * (ADR-0016) and a `no-store` fetch would force it dynamic.
  */
 
 export interface CatalogQuery {
@@ -12,19 +14,26 @@ export interface CatalogQuery {
   limit?: number;
   q?: string;
   genres?: string[];
+  /** Narrow to the curated Featured rail (CONTEXT.md: Featured). */
+  featured?: boolean;
 }
 
-/** Fetches a page of the catalog through the gateway. */
-export async function fetchCatalog(
-  query: CatalogQuery = {},
-): Promise<Paginated<MangaView>> {
+/** Builds the `?…` query string for the catalog list endpoint. */
+function catalogQuery(query: CatalogQuery): string {
   const params = new URLSearchParams();
   if (query.page) params.set("page", String(query.page));
   if (query.limit) params.set("limit", String(query.limit));
   if (query.q) params.set("q", query.q);
+  if (query.featured) params.set("featured", "true");
   for (const genre of query.genres ?? []) params.append("genre", genre);
-  const qs = params.toString();
+  return params.toString();
+}
 
+/** Fetches a page of the catalog through the gateway (fresh per request). */
+export async function fetchCatalog(
+  query: CatalogQuery = {},
+): Promise<Paginated<MangaView>> {
+  const qs = catalogQuery(query);
   const res = await fetch(
     `${gatewayUrl()}/catalog/manga${qs ? `?${qs}` : ""}`,
     { cache: "no-store" },
@@ -35,10 +44,16 @@ export async function fetchCatalog(
   return (await res.json()) as Paginated<MangaView>;
 }
 
-/** Fetches the distinct genres in the catalog, for the filter chips. */
-export async function fetchGenres(): Promise<string[]> {
+/**
+ * Fetches the distinct genres in the catalog, for the filter chips. The catalog
+ * page wants this fresh (`no-store`, the default); the homepage genre quick-nav
+ * passes `{ revalidate }` so the fetch is cacheable under ISR (ADR-0016).
+ */
+export async function fetchGenres(opts?: { revalidate?: number }): Promise<string[]> {
   const res = await fetch(`${gatewayUrl()}/catalog/genres`, {
-    cache: "no-store",
+    ...(opts?.revalidate
+      ? { next: { revalidate: opts.revalidate } }
+      : { cache: "no-store" }),
   });
   if (!res.ok) {
     throw new Error(`Genres request failed (${res.status})`);
@@ -57,4 +72,39 @@ export async function fetchManga(id: string): Promise<MangaView | null> {
     throw new Error(`Manga request failed (${res.status})`);
   }
   return (await res.json()) as MangaView;
+}
+
+/** How many tiles each homepage rail shows. */
+export const HOME_RAIL_LIMIT = 4;
+/** ISR window shared by every homepage fetch (ADR-0016: 1 hour). */
+export const HOME_REVALIDATE = 3600;
+
+/** One cacheable rail fetch: newest-first, capped at the rail size. */
+async function fetchRail(query: CatalogQuery): Promise<MangaView[]> {
+  const qs = catalogQuery({ ...query, limit: HOME_RAIL_LIMIT });
+  const res = await fetch(`${gatewayUrl()}/catalog/manga?${qs}`, {
+    next: { revalidate: HOME_REVALIDATE },
+  });
+  if (!res.ok) {
+    throw new Error(`Catalog request failed (${res.status})`);
+  }
+  return ((await res.json()) as Paginated<MangaView>).items;
+}
+
+/**
+ * Homepage Featured rail: up to {@link HOME_RAIL_LIMIT} staff-curated manga
+ * (`featured=true`), newest-first. Empty when nothing is curated yet — the page
+ * renders an intentional empty state rather than a bare heading.
+ */
+export function fetchFeatured(): Promise<MangaView[]> {
+  return fetchRail({ featured: true });
+}
+
+/**
+ * Homepage New Arrivals rail: the {@link HOME_RAIL_LIMIT} most-recently-created
+ * manga (default newest-first sort from slice 01). Purely time-ordered, never
+ * curated (CONTEXT.md: New Arrivals).
+ */
+export function fetchNewArrivals(): Promise<MangaView[]> {
+  return fetchRail({});
 }

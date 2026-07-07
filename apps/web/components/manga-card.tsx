@@ -3,15 +3,27 @@ import type { MangaView } from "@workspace/contracts";
 import { AvailabilityBadge } from "@/components/availability-badge";
 import { DisplayPriceLabels } from "@/components/display-prices";
 import { FeaturedBadge } from "@/components/featured-badge";
+import { NewBadge } from "@/components/new-badge";
 import { formatEur } from "@/lib/money";
+import { isNewArrival } from "@/lib/recency";
 
 /**
  * A single catalog tile: cover, title, author, price, availability. The whole
  * card links to the manga's detail page. Covers are remote (MyAnimeList CDN)
  * and may fail — a plain `<img>` degrades to its alt text, and the ink border
  * keeps the layout intact regardless.
+ *
+ * `showNew` opts the tile into the New Arrivals **NEW** badge — set only by the
+ * homepage New Arrivals rail, and then only when the manga is actually recent
+ * (CONTEXT.md: New Arrivals). The catalog grid leaves it off.
  */
-export function MangaCard({ manga }: { manga: MangaView }) {
+export function MangaCard({
+  manga,
+  showNew = false,
+}: {
+  manga: MangaView;
+  showNew?: boolean;
+}) {
   return (
     <Link
       href={`/catalog/${manga.id}`}
@@ -19,6 +31,9 @@ export function MangaCard({ manga }: { manga: MangaView }) {
     >
       {manga.featured && (
         <FeaturedBadge className="absolute top-2 right-2 z-10" />
+      )}
+      {showNew && isNewArrival(manga.createdAt) && (
+        <NewBadge className="absolute top-2 left-2 z-10" />
       )}
       <div className="border-b bg-muted aspect-[2/3] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
