@@ -18,6 +18,7 @@
     "@workspace/auth-guard": "workspace:*",
     "@workspace/contracts": "workspace:*",
     "@workspace/messaging": "workspace:*",
+    "@workspace/observability": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "drizzle-orm": "^0.45.2",

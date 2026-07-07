@@ -1,0 +1,15 @@
+# Grafana dashboard provisioning (slice 12 — observability). Loads every
+# dashboard JSON in this directory on startup, so `docker compose up` brings
+# Grafana up with the Manga Shop dashboard already installed (no manual import).
+apiVersion: 1
+
+providers:
+  - name: manga-shop
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

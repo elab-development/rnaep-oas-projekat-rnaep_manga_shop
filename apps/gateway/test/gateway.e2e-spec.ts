@@ -120,6 +120,27 @@ describe("gateway (e2e)", () => {
     expect(received.body).toBe('{"id":"evt_1"}');
   });
 
+  it("exposes /metrics in Prometheus format tagged with the service", async () => {
+    const res = await request(app.getHttpServer()).get("/metrics");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/plain");
+    expect(res.text).toContain("http_requests_total");
+    expect(res.text).toContain('service="gateway"');
+  });
+
+  it("records proxied requests in the metrics", async () => {
+    // Drive a request through the gateway's proxy, then confirm it was counted
+    // under its normalized route — the recorder wraps proxied traffic, not just
+    // the gateway's own Nest routes.
+    await request(app.getHttpServer()).get("/catalog/manga?q=x");
+
+    const res = await request(app.getHttpServer()).get("/metrics");
+    expect(res.text).toMatch(
+      /http_requests_total\{[^}]*route="\/catalog\/manga"[^}]*\}\s+[1-9]/,
+    );
+  });
+
   it("locks CORS to the frontend origin and never echoes another origin", async () => {
     const allowed = await request(app.getHttpServer())
       .options("/auth/login")

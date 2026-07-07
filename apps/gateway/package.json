@@ -17,6 +17,7 @@
     "@nestjs/platform-express": "^11",
     "@workspace/auth-guard": "workspace:*",
     "@workspace/contracts": "workspace:*",
+    "@workspace/observability": "workspace:*",
     "http-proxy-middleware": "^2.0.10",
     "jsonwebtoken": "^9.0.3",
     "reflect-metadata": "^0.2",

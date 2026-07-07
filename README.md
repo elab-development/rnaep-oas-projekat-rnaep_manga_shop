@@ -72,7 +72,33 @@ done
 ```
 
 Prometheus is at <http://localhost:9090>, Grafana at <http://localhost:3030>
-(admin/admin). Service `/metrics` endpoints land in slice 12.
+(admin/admin). See [Observability](#observability-slice-12) below.
+
+## Observability (slice 12)
+
+Every service (`gateway`, `auth`, `catalog`, `orders`, `payments`) exposes a
+Prometheus `/metrics` endpoint via the shared `@workspace/observability`
+package: an `http_requests_total` counter and an `http_request_duration_seconds`
+histogram, both labelled by `method`, `route` (id segments collapsed to `:id`),
+and `status_code`, and tagged with the service name. From those, dashboards
+derive request rate, error rate (`status_code=~"5.."`), and latency (p95 + avg).
+
+The four downstream NestJS services record via a global interceptor
+(`MetricsModule.forRoot(...)`); the thin gateway uses an Express middleware
+(`installGatewayMetrics`) so it also counts the traffic it proxies.
+
+```bash
+for port in 3000 3001 3002 3003 3004; do
+  echo "== port $port ==" && curl -s "http://localhost:$port/metrics" | head -3
+done
+```
+
+Prometheus (<http://localhost:9090>) scrapes all five as the `services` job;
+its **Status → Targets** page should show them **up**. Grafana
+(<http://localhost:3030>, admin/admin) auto-loads the **Manga Shop — Services
+Overview** dashboard (request rate, error rate, p95/avg latency per service).
+Generate some traffic through the gateway (browse the catalog, place an order)
+and the panels populate within a scrape interval or two.
 
 ## Auth (slice 02)
 
