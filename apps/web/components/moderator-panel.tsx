@@ -3,9 +3,15 @@
 import type { MangaView } from "@workspace/contracts";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
+import { cn } from "@workspace/ui/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { fetchCatalog } from "@/lib/catalog";
-import { deleteManga, ModerationError, updateStock } from "@/lib/moderation";
+import {
+  deleteManga,
+  ModerationError,
+  setFeatured,
+  updateStock,
+} from "@/lib/moderation";
 import { formatEur } from "@/lib/money";
 import { MangaForm } from "@/components/manga-form";
 
@@ -182,6 +188,22 @@ function MangaRow({
     }
   }
 
+  // Curate this title into / out of the homepage Featured rail. onChanged()
+  // refetches the catalog, so the toggle then reflects the persisted read-model
+  // `featured` (MangaView) rather than optimistic-only state.
+  async function toggleFeatured(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await setFeatured(manga.id, !manga.featured);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ModerationError ? err.message : "Failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <li className="brutal-box bg-card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:gap-4">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -192,7 +214,16 @@ function MangaRow({
         loading="lazy"
       />
       <div className="min-w-0 flex-1">
-        <h3 className="truncate font-bold tracking-tight">{manga.title}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="min-w-0 truncate font-bold tracking-tight">
+            {manga.title}
+          </h3>
+          {manga.featured && (
+            <span className="border-chip bg-primary text-primary-foreground shrink-0 px-1.5 py-0.5 font-mono text-[0.6rem] font-bold tracking-wider uppercase">
+              ★ Featured
+            </span>
+          )}
+        </div>
         <p className="text-muted-foreground truncate text-sm">{manga.author}</p>
         <p className="font-mono text-sm">
           {formatEur(manga.price)} · reserved {manga.stock.reserved} · available{" "}
@@ -230,6 +261,25 @@ function MangaRow({
             </Button>
           </div>
         </label>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          aria-pressed={manga.featured}
+          onClick={toggleFeatured}
+          title={
+            manga.featured
+              ? "Remove from the homepage Featured rail"
+              : "Add to the homepage Featured rail"
+          }
+          className={cn(
+            "brutal-btn h-9",
+            manga.featured && "bg-primary text-primary-foreground",
+          )}
+        >
+          {manga.featured ? "★ Featured" : "☆ Feature"}
+        </Button>
         <Button
           type="button"
           size="sm"

@@ -90,6 +90,19 @@ export function updateStock(
   return send<MangaView>(`/catalog/manga/${id}/stock`, "PATCH", { quantity });
 }
 
+/**
+ * Curates a manga into (or out of) the homepage Featured rail (CONTEXT.md:
+ * Featured). Rides the existing partial-update path (PRD: no dedicated
+ * endpoint); the returned view carries the persisted `featured` so the caller
+ * reflects the read model rather than optimistic-only state.
+ */
+export function setFeatured(
+  id: string,
+  featured: boolean,
+): Promise<MangaView> {
+  return updateManga(id, { featured });
+}
+
 /** Deletes a manga (admin-gated). */
 export function deleteManga(id: string): Promise<void> {
   return send<void>(`/catalog/manga/${id}`, "DELETE");
