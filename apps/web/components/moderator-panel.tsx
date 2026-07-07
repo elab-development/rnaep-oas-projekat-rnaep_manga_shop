@@ -162,6 +162,7 @@ function MangaRow({
       onChanged();
     } catch (err) {
       setError(err instanceof ModerationError ? err.message : "Failed.");
+    } finally {
       setBusy(false);
     }
   }
