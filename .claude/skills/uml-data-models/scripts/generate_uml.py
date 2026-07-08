@@ -26,50 +26,76 @@ import os
 import sys
 
 # ---------------------------------------------------------------------------
-# Style
+# Style — neo-brutalist house style (ADR-0014, tokens in tools/diagram-brand).
+# White chassis + screentone dots, thick ink borders, hard zero-blur offset
+# shadows, sharp (zero-radius) corners, Space Grotesk (heavy, UPPERCASE)
+# headings, Space Mono body, and the closed accent set. Render the emitted SVG
+# through tools/diagram-brand/render.mjs so the fonts embed and rasterize right.
 # ---------------------------------------------------------------------------
 
-HEADER_FILL = "#DCE6F5"
-BODY_FILL = "#FFFFFF"
-BORDER = "#5B6B85"
-INK = "#1F2A37"
+INK = "#18181B"
+PAPER = "#FFFFFF"
 MUTED = "#6B7280"
-KEYTAG = "#3E6DB5"
-REL = "#4A4F58"
+DOTS = "#18181B"
+KEYTAG = "#18181B"
+REL = "#18181B"
+
+# Closed accent set (brand.json). Header bars pick from these; `on` is the text
+# colour that stays legible on that fill.
+ACCENTS = {
+    "yellow": ("#F4C518", "#000000"),
+    "green": ("#2FC06E", "#000000"),
+    "blue": ("#3457DD", "#FFFFFF"),
+    "red": ("#E03127", "#FFFFFF"),
+    "grey": ("#D4D4D8", "#000000"),
+}
+ACCENT_CYCLE = ["yellow", "blue", "green", "grey", "red"]
+
+HEAD_FONT = "'Space Grotesk', 'Arial Narrow', sans-serif"
+MONO_FONT = "'Space Mono', 'DejaVu Sans Mono', 'Courier New', monospace"
+
+BORDER = 3          # box border width
+SHADOW = 7          # hard offset shadow distance
 
 NAME_FS = 15
-STEREO_FS = 11
+STEREO_FS = 10
 ATTR_FS = 12.5
-LINE_H = 18
+LINE_H = 19
 PAD_X = 12
-MIN_W = 148
-MAX_W = 300
-H_GAP = 74
-V_GAP = 92
-MARGIN = 52
-TITLE_H = 62
+MIN_W = 168
+MAX_W = 320
+H_GAP = 84
+V_GAP = 104
+MARGIN = 56
+TITLE_H = 74
 
 
 def esc(s):
     return html.escape(str(s), quote=True)
 
 
+# Space Grotesk (uppercase headings) — narrow; approximate per-glyph advance.
 def char_w(ch, fs):
     if ch in "iIl.,:;'|!":
-        return 0.30 * fs
-    if ch in "fjtr()[]-":
-        return 0.38 * fs
+        return 0.32 * fs
+    if ch in "fjtr()[]{}-":
+        return 0.42 * fs
     if ch in "mwMW":
-        return 0.90 * fs
+        return 0.86 * fs
     if ch in "ABCDEFGHKNOPQRSUVXYZ":
-        return 0.66 * fs
+        return 0.64 * fs
     if ch == " ":
         return 0.30 * fs
-    return 0.55 * fs
+    return 0.56 * fs
 
 
 def tw(s, fs):
     return sum(char_w(c, fs) for c in str(s))
+
+
+# Space Mono body — monospaced; every glyph is ~0.60em.
+def mtw(s, fs):
+    return 0.60 * fs * len(str(s))
 
 
 # ---------------------------------------------------------------------------
@@ -86,23 +112,23 @@ def attr_text(a):
 
 def class_size(c):
     stereo = c.get("stereotype")
-    header_h = 30 + (16 if stereo else 0)
+    header_h = 34 + (15 if stereo else 0)
     attrs = c.get("attributes", [])
     ops = c.get("operations", [])
 
-    widths = [tw(c["name"], NAME_FS) + 24]
+    widths = [tw(c["name"].upper(), NAME_FS) + 28]
     if stereo:
-        widths.append(tw(stereo, STEREO_FS) + 20)
+        widths.append(tw(("«" + stereo.strip("«»") + "»").upper(), STEREO_FS) + 24)
     for a in attrs:
         _, t = attr_text(a)
         keytag = a.get("key", "")
-        widths.append(tw(t, ATTR_FS) + (tw(keytag, ATTR_FS - 1) + 10 if keytag else 0) + 24)
+        widths.append(mtw(t, ATTR_FS) + (mtw("{" + keytag + "}", ATTR_FS - 1) + 12 if keytag else 0) + 2 * PAD_X + 8)
     for o in ops:
-        widths.append(tw(o, ATTR_FS) + 24)
+        widths.append(mtw(o, ATTR_FS) + 2 * PAD_X)
     w = max(MIN_W, min(MAX_W, max(widths)))
 
-    attrs_h = (len(attrs) * LINE_H + 10) if attrs else 12
-    ops_h = (len(ops) * LINE_H + 10) if ops else 0
+    attrs_h = (len(attrs) * LINE_H + 12) if attrs else 14
+    ops_h = (len(ops) * LINE_H + 12) if ops else 0
     h = header_h + attrs_h + ops_h
     return w, h, header_h, attrs_h, ops_h
 
@@ -111,7 +137,7 @@ def class_size(c):
 # Layout (tiered, variable width)
 # ---------------------------------------------------------------------------
 
-def layout(diagram):
+def layout(diagram, min_content_w=0):
     classes = diagram["classes"]
     tiers = {}
     for c in classes:
@@ -124,7 +150,7 @@ def layout(diagram):
     sizes = {c["id"]: class_size(c) for c in classes}
     tier_w = {t: sum(sizes[c["id"]][0] for c in tiers[t]) + H_GAP * (len(tiers[t]) - 1) for t in keys}
     tier_h = {t: max(sizes[c["id"]][1] for c in tiers[t]) for t in keys}
-    content_w = max(tier_w.values())
+    content_w = max(max(tier_w.values()), min_content_w)
 
     placed = {}
     y = MARGIN + TITLE_H
@@ -165,49 +191,55 @@ def render_class(p):
     c = p["c"]
     x, y, w, h, hh, ah = p["x"], p["y"], p["w"], p["h"], p["hh"], p["ah"]
     cx = x + w / 2
+    accent, on_accent = ACCENTS.get(c.get("accent", "grey"), ACCENTS["grey"])
+    bi = BORDER
     out = []
-    # outer box
+    # hard offset shadow + white chassis with thick ink border, sharp corners
+    out.append(f'<rect x="{x + SHADOW:.1f}" y="{y + SHADOW:.1f}" width="{w:.1f}" '
+               f'height="{h:.1f}" fill="{INK}"/>')
     out.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
-               f'fill="{BODY_FILL}" stroke="{BORDER}" stroke-width="1.4" rx="2"/>')
-    # header
-    out.append(f'<path d="M{x:.1f},{y + 2:.1f} a2,2 0 0 1 2,-2 h{w - 4:.1f} a2,2 0 0 1 2,2 '
-               f'v{hh - 2:.1f} h{-w:.1f} z" fill="{HEADER_FILL}" stroke="{BORDER}" stroke-width="1.4"/>')
-    ty = y + 18
-    if c.get("stereotype"):
-        out.append(f'<text x="{cx:.1f}" y="{ty:.1f}" fill="{MUTED}" font-size="{STEREO_FS}" '
-                   f'font-style="italic" text-anchor="middle">{esc("«" + c["stereotype"].strip("«»") + "»")}</text>')
-        ty += 16
-    out.append(f'<text x="{cx:.1f}" y="{ty:.1f}" fill="{INK}" font-size="{NAME_FS}" '
-               f'font-weight="700" text-anchor="middle">{esc(c["name"])}</text>')
+               f'fill="{PAPER}" stroke="{INK}" stroke-width="{bi}"/>')
+    # accent header bar, flush inside the border
+    out.append(f'<rect x="{x + bi:.1f}" y="{y + bi:.1f}" width="{w - 2 * bi:.1f}" '
+               f'height="{hh - bi:.1f}" fill="{accent}"/>')
+    # ink divider under the header
+    out.append(f'<rect x="{x:.1f}" y="{y + hh:.1f}" width="{w:.1f}" height="{bi}" fill="{INK}"/>')
 
-    # attributes
-    ay = y + hh + 16
+    ty = y + bi + 16
+    if c.get("stereotype"):
+        out.append(f'<text x="{cx:.1f}" y="{ty:.1f}" fill="{on_accent}" opacity="0.75" '
+                   f'font-family="{HEAD_FONT}" font-size="{STEREO_FS}" font-weight="700" '
+                   f'letter-spacing="0.5" text-anchor="middle">'
+                   f'{esc(("«" + c["stereotype"].strip("«»") + "»").upper())}</text>')
+        ty += 15
+    out.append(f'<text x="{cx:.1f}" y="{ty:.1f}" fill="{on_accent}" '
+               f'font-family="{HEAD_FONT}" font-size="{NAME_FS}" font-weight="700" '
+               f'letter-spacing="0.6" text-anchor="middle">{esc(c["name"].upper())}</text>')
+
+    # attributes (Space Mono); PK underlined; key tags right-aligned in ink
+    ay = y + hh + 18
     for a in c.get("attributes", []):
         vis, t = attr_text(a)
         key = a.get("key", "")
         deco = ' text-decoration="underline"' if key == "PK" else ''
         label = (vis + " " if vis else "") + t
         out.append(f'<text x="{x + PAD_X:.1f}" y="{ay:.1f}" fill="{INK}" '
-                   f'font-size="{ATTR_FS}"{deco}>{esc(label)}</text>')
+                   f'font-family="{MONO_FONT}" font-size="{ATTR_FS}"{deco}>{esc(label)}</text>')
         if key:
             out.append(f'<text x="{x + w - PAD_X:.1f}" y="{ay:.1f}" fill="{KEYTAG}" '
+                       f'font-family="{MONO_FONT}" font-weight="700" '
                        f'font-size="{ATTR_FS - 1.5:.0f}" text-anchor="end">{{{esc(key)}}}</text>')
         ay += LINE_H
 
     # operations compartment
     if c.get("operations"):
         oy = y + hh + ah
-        out.append(f'<line x1="{x:.1f}" y1="{oy:.1f}" x2="{x + w:.1f}" y2="{oy:.1f}" '
-                   f'stroke="{BORDER}" stroke-width="1.2"/>')
-        ly = oy + 16
+        out.append(f'<rect x="{x:.1f}" y="{oy:.1f}" width="{w:.1f}" height="{bi - 1}" fill="{INK}"/>')
+        ly = oy + 18
         for o in c["operations"]:
             out.append(f'<text x="{x + PAD_X:.1f}" y="{ly:.1f}" fill="{INK}" '
-                       f'font-size="{ATTR_FS}">{esc(o)}</text>')
+                       f'font-family="{MONO_FONT}" font-size="{ATTR_FS}">{esc(o)}</text>')
             ly += LINE_H
-    # attr/op separator already implied by header line; add line under header→attrs
-    sep = y + hh
-    out.insert(1, f'<line x1="{x:.1f}" y1="{sep:.1f}" x2="{x + w:.1f}" y2="{sep:.1f}" '
-                  f'stroke="{BORDER}" stroke-width="1.2"/>')
     return "".join(out)
 
 
@@ -216,56 +248,61 @@ def render_class(p):
 # ---------------------------------------------------------------------------
 
 def triangle(px, py, ang):
-    L, hw = 14, 8
+    L, hw = 16, 9
     bx, by = px - L * math.cos(ang), py - L * math.sin(ang)
     pp = ang + math.pi / 2
     b1 = (bx + hw * math.cos(pp), by + hw * math.sin(pp))
     b2 = (bx - hw * math.cos(pp), by - hw * math.sin(pp))
     return (f'<polygon points="{px:.1f},{py:.1f} {b1[0]:.1f},{b1[1]:.1f} {b2[0]:.1f},{b2[1]:.1f}" '
-            f'fill="#FFFFFF" stroke="{REL}" stroke-width="1.4"/>'), (bx, by)
+            f'fill="{PAPER}" stroke="{INK}" stroke-width="2.4" stroke-linejoin="miter"/>'), (bx, by)
 
 
 def diamond(px, py, ang, filled):
-    d, hw = 9, 6
+    d, hw = 10, 6.5
     c = (px + d * math.cos(ang), py + d * math.sin(ang))
     tin = (px + 2 * d * math.cos(ang), py + 2 * d * math.sin(ang))
     pp = ang + math.pi / 2
     s1 = (c[0] + hw * math.cos(pp), c[1] + hw * math.sin(pp))
     s2 = (c[0] - hw * math.cos(pp), c[1] - hw * math.sin(pp))
-    fill = REL if filled else "#FFFFFF"
+    fill = INK if filled else PAPER
     return (f'<polygon points="{px:.1f},{py:.1f} {s1[0]:.1f},{s1[1]:.1f} {tin[0]:.1f},{tin[1]:.1f} '
-            f'{s2[0]:.1f},{s2[1]:.1f}" fill="{fill}" stroke="{REL}" stroke-width="1.4"/>'), tin
+            f'{s2[0]:.1f},{s2[1]:.1f}" fill="{fill}" stroke="{INK}" stroke-width="2.4" '
+            f'stroke-linejoin="miter"/>'), tin
 
 
 def open_arrow(px, py, ang):
-    s = 10
+    s = 12
     a1 = (px - s * math.cos(ang - 0.4), py - s * math.sin(ang - 0.4))
     a2 = (px - s * math.cos(ang + 0.4), py - s * math.sin(ang + 0.4))
-    return (f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{a1[0]:.1f}" y2="{a1[1]:.1f}" stroke="{REL}" stroke-width="1.4"/>'
-            f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{a2[0]:.1f}" y2="{a2[1]:.1f}" stroke="{REL}" stroke-width="1.4"/>')
+    return (f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{a1[0]:.1f}" y2="{a1[1]:.1f}" stroke="{INK}" stroke-width="2.4"/>'
+            f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{a2[0]:.1f}" y2="{a2[1]:.1f}" stroke="{INK}" stroke-width="2.4"/>')
 
 
 def mult_label(x, y, ang, text, out):
     if not text:
         return
     pp = ang + math.pi / 2
-    ox, oy = x + 12 * math.cos(pp), y + 12 * math.sin(pp)
-    out.append(f'<text x="{ox:.1f}" y="{oy + 4:.1f}" fill="{INK}" font-size="11" '
+    ox, oy = x + 13 * math.cos(pp), y + 13 * math.sin(pp)
+    out.append(f'<text x="{ox:.1f}" y="{oy + 4:.1f}" fill="{INK}" '
+               f'font-family="{MONO_FONT}" font-weight="700" font-size="11" '
                f'text-anchor="middle">{esc(text)}</text>')
 
 
 def render_rel(rel, placed, out):
+    """Emit the line + decorations + multiplicities into `out`; return the
+    relationship-label geometry (or None) so a declutter pass can place the
+    chips on top of everything without overlaps."""
     if rel["from"] not in placed or rel["to"] not in placed:
-        return
+        return None
     a, b = placed[rel["from"]], placed[rel["to"]]
     pf = edge_point(a, b["cx"], b["cy"])
     pt = edge_point(b, a["cx"], a["cy"])
     rtype = rel.get("type", "association")
     dashed = rtype in ("dependency", "realization")
-    dash = ' stroke-dasharray="6 4"' if dashed else ''
+    dash = ' stroke-dasharray="7 5"' if dashed else ''
     # base line
     out.append(f'<line x1="{pf[0]:.1f}" y1="{pf[1]:.1f}" x2="{pt[0]:.1f}" y2="{pt[1]:.1f}" '
-               f'stroke="{REL}" stroke-width="1.4"{dash}/>')
+               f'stroke="{INK}" stroke-width="2.4"{dash}/>')
     ang_ft = math.atan2(pt[1] - pf[1], pt[0] - pf[0])   # from -> to
     ang_tf = ang_ft + math.pi                            # to -> from
 
@@ -287,14 +324,40 @@ def render_rel(rel, placed, out):
     mult_label(fx, fy, ang_ft, rel.get("fromMult", ""), out)
     mult_label(txx, tyy, ang_ft, rel.get("toMult", ""), out)
 
-    # relationship label at midpoint
+    # relationship label at midpoint — returned for decluttering, drawn last
     if rel.get("label"):
         mx, my = (pf[0] + pt[0]) / 2, (pf[1] + pt[1]) / 2
-        lw = tw(rel["label"], 11) + 12
-        out.append(f'<rect x="{mx - lw / 2:.1f}" y="{my - 9:.1f}" width="{lw:.1f}" height="17" '
-                   f'rx="3" fill="#FFFFFF" stroke="#E3E6EA" opacity="0.95"/>')
-        out.append(f'<text x="{mx:.1f}" y="{my + 3:.1f}" fill="{INK}" font-size="11" '
-                   f'text-anchor="middle">{esc(rel["label"])}</text>')
+        lw = mtw(rel["label"], 11) + 14
+        return {"text": rel["label"], "cx": mx, "cy": my, "w": lw, "h": 20}
+    return None
+
+
+def emit_label(lbl):
+    x, y = lbl["cx"] - lbl["w"] / 2, lbl["cy"] - lbl["h"] / 2
+    return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{lbl["w"]:.1f}" height="{lbl["h"]:.1f}" '
+            f'fill="{PAPER}" stroke="{INK}" stroke-width="2"/>'
+            f'<text x="{lbl["cx"]:.1f}" y="{lbl["cy"] + 4:.1f}" fill="{INK}" '
+            f'font-family="{MONO_FONT}" font-size="11" text-anchor="middle">{esc(lbl["text"])}</text>')
+
+
+def declutter(labels, obstacles, W, H):
+    """Nudge label chips vertically off each other and off the class boxes.
+    `obstacles` (the boxes) are fixed; chips move until they clear everything."""
+    def overlaps(a, b, pad):
+        return (abs(a["cx"] - b["cx"]) * 2 < a["w"] + b["w"] + pad and
+                abs(a["cy"] - b["cy"]) * 2 < a["h"] + b["h"] + pad)
+
+    placed = list(obstacles)
+    for lbl in labels:
+        for _ in range(60):
+            hit = next((p for p in placed
+                        if overlaps(lbl, p, 10 if p.get("box") else 6)), None)
+            if not hit:
+                break
+            step = lbl["h"] + 4
+            lbl["cy"] += step if lbl["cy"] >= hit["cy"] else -step
+        lbl["cy"] = max(lbl["h"], min(H - lbl["h"], lbl["cy"]))
+        placed.append(lbl)
 
 
 # ---------------------------------------------------------------------------
@@ -302,23 +365,43 @@ def render_rel(rel, placed, out):
 # ---------------------------------------------------------------------------
 
 def render_diagram(d):
-    placed, W, H = layout(d)
+    title = d.get("title", "Class Diagram").upper()
+    subtitle = d.get("subtitle", "")
+    # canvas must be wide enough for the heading (letter-spacing ~0.8) and subtitle
+    min_content_w = max(tw(title, 24) + 0.8 * len(title),
+                        mtw(subtitle, 12.5)) if title else 0
+    placed, W, H = layout(d, min_content_w)
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.0f}" height="{H:.0f}" '
-        f'viewBox="0 0 {W:.0f} {H:.0f}" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">',
-        f'<rect width="{W:.0f}" height="{H:.0f}" fill="#FFFFFF"/>',
+        f'viewBox="0 0 {W:.0f} {H:.0f}">',
+        '<defs><pattern id="dots" width="12" height="12" patternUnits="userSpaceOnUse">'
+        f'<circle cx="1.1" cy="1.1" r="1.1" fill="{DOTS}" fill-opacity="0.08"/>'
+        '</pattern></defs>',
+        f'<rect width="{W:.0f}" height="{H:.0f}" fill="{PAPER}"/>',
+        f'<rect width="{W:.0f}" height="{H:.0f}" fill="url(#dots)"/>',
     ]
-    out.append(f'<text x="{MARGIN}" y="{MARGIN + 4}" fill="{INK}" font-size="20" '
-               f'font-weight="700">{esc(d.get("title", "Class Diagram"))}</text>')
-    if d.get("subtitle"):
-        out.append(f'<text x="{MARGIN}" y="{MARGIN + 28}" fill="{MUTED}" font-size="13">'
-                   f'{esc(d["subtitle"])}</text>')
-    # relationships first (under boxes)
+    out.append(f'<text x="{MARGIN}" y="{MARGIN + 4}" fill="{INK}" '
+               f'font-family="{HEAD_FONT}" font-size="24" font-weight="700" '
+               f'letter-spacing="0.8">{esc(title)}</text>')
+    out.append(f'<rect x="{MARGIN}" y="{MARGIN + 12}" width="120" height="6" fill="{ACCENTS["yellow"][0]}"/>')
+    if subtitle:
+        out.append(f'<text x="{MARGIN}" y="{MARGIN + 38}" fill="{MUTED}" '
+                   f'font-family="{MONO_FONT}" font-size="12.5">{esc(subtitle)}</text>')
+    # relationship lines + decorations under the boxes; labels collected for declutter
+    labels = []
     for rel in d.get("relationships", []):
-        render_rel(rel, placed, out)
+        lbl = render_rel(rel, placed, out)
+        if lbl:
+            labels.append(lbl)
     # classes on top
     for p in placed.values():
         out.append(render_class(p))
+    # relationship label chips last, decluttered off both peers and boxes
+    obstacles = [{"cx": p["cx"], "cy": p["cy"], "w": p["w"], "h": p["h"], "box": True}
+                 for p in placed.values()]
+    declutter(labels, obstacles, W, H)
+    for lbl in labels:
+        out.append(emit_label(lbl))
     out.append("</svg>")
     return "\n".join(out)
 
