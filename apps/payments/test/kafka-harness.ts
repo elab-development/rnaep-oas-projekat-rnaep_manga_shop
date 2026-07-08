@@ -87,13 +87,23 @@ export class TestKafka {
    */
   async observe<T>(topic: string): Promise<T[]> {
     const captured: T[] = [];
+    // Snapshot the current end offsets *before* subscribing so the observer can
+    // be pinned to the log end deterministically. `fromBeginning: false` alone is
+    // racy: kafkajs resolves the "latest" position lazily on the consumer's first
+    // fetch — which happens after GROUP_JOIN — so an event emitted in the window
+    // between this method resolving and that first fetch advances the high
+    // watermark past the consumer's reset point and is silently missed (the
+    // waitFor then spins out). Seeking to these offsets reads that event without
+    // replaying earlier ones, which the idempotency/negative assertions count.
+    const admin = this.kafka.admin();
+    await admin.connect();
+    const endOffsets = await admin.fetchTopicOffsets(topic);
+    await admin.disconnect().catch(() => undefined);
+
     const consumer = this.kafka.consumer({
       groupId: `saga-test-observe-${topic}-${this.consumers.length}`,
     });
     this.consumers.push(consumer);
-    const joined = new Promise<void>((resolve) => {
-      consumer.on(consumer.events.GROUP_JOIN, () => resolve());
-    });
     await consumer.connect();
     await consumer.subscribe({ topic, fromBeginning: false });
     await consumer.run({
@@ -104,7 +114,12 @@ export class TestKafka {
         }
       },
     });
-    await joined;
+    // Explicit seek wins over the lazy latest-reset: the next fetch starts exactly
+    // at the end offset captured above, so every event produced after this returns
+    // is delivered. Must be called after run().
+    for (const { partition, offset } of endOffsets) {
+      consumer.seek({ topic, partition, offset });
+    }
     return captured;
   }
 
