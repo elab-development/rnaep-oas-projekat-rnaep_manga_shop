@@ -1,0 +1,14 @@
+{
+  "name": "diagram-brand",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "House-style (ADR-0014) branding + font-correct rasterization for project diagrams. Not part of the pnpm workspace.",
+  "bin": { "diagram-render": "./render.mjs" },
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}
