@@ -45,7 +45,7 @@ ROLE = {
 # top-to-bottom band order
 ORDER = ["actor", "command", "aggregate", "event", "policy", "read_model", "external", "hotspot"]
 
-INK = "#2B2F36"
+INK = "#18181B"
 MUTED = "#6B7280"
 CHAIN = "#B4B9C1"          # vertical grammar connectors
 BACKBONE = "#D07C1E"       # chronological event->event arrows
@@ -71,17 +71,11 @@ def esc(s):
 
 
 def char_w(ch, fs):
-    if ch in "iIl.,:;'|!":
-        return 0.28 * fs
-    if ch in "fjtr()[]-":
-        return 0.36 * fs
-    if ch in "mwMW":
-        return 0.88 * fs
-    if ch in "ABCDEFGHKNOPQRSUVXYZ":
-        return 0.64 * fs
-    if ch == " ":
-        return 0.30 * fs
-    return 0.53 * fs
+    # Space Mono (body) is monospace — every glyph advances ~0.6em. Space Grotesk
+    # (headings/legend) is proportional but narrower, so 0.6 is a safe estimate
+    # there too. A constant advance keeps wrapping conservative and prevents the
+    # overflow that a proportional estimate causes against a monospace font.
+    return 0.6 * fs
 
 
 def wrap(text, fs, max_w, max_lines=4):
@@ -117,11 +111,11 @@ def sticky_h(text, w):
 def sticky(x, y, w, h, role, text):
     st = ROLE[role]
     out = []
-    # drop shadow
-    out.append(f'<rect x="{x + 2.5:.1f}" y="{y + 3:.1f}" width="{w:.1f}" height="{h:.1f}" '
-               f'rx="4" fill="#000000" opacity="0.10"/>')
-    out.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="4" '
-               f'fill="{st["fill"]}" stroke="{st["stroke"]}" stroke-width="1.2"/>')
+    # hard offset ink shadow (zero blur, sharp corners) — neo-brutalist (ADR-0014)
+    out.append(f'<rect x="{x + 5:.1f}" y="{y + 5:.1f}" width="{w:.1f}" height="{h:.1f}" '
+               f'fill="{INK}"/>')
+    out.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+               f'fill="{st["fill"]}" stroke="{INK}" stroke-width="2.4"/>')
     lines = wrap(text, FS, w - 2 * PAD)
     ty = y + h / 2 - (len(lines) - 1) * LINE_H / 2 + FS / 2 - 1
     cx = x + w / 2
@@ -211,13 +205,17 @@ def render_diagram(d):
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{total_w:.0f}" height="{total_h:.0f}" '
         f'viewBox="0 0 {total_w:.0f} {total_h:.0f}" '
-        f'font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">',
-        f'<rect width="{total_w:.0f}" height="{total_h:.0f}" fill="#FAFAF7"/>',
+        f"font-family=\"'Space Mono', monospace\">",
+        f'<defs><pattern id="dots" width="12" height="12" patternUnits="userSpaceOnUse">'
+        f'<circle cx="1.5" cy="1.5" r="1.2" fill="{INK}" opacity="0.06"/></pattern></defs>',
+        f'<rect width="{total_w:.0f}" height="{total_h:.0f}" fill="#FFFFFF"/>',
+        f'<rect width="{total_w:.0f}" height="{total_h:.0f}" fill="url(#dots)"/>',
     ]
 
     # header: title, story, legend
     out.append(f'<text x="{MARGIN}" y="{MARGIN + 6}" fill="{INK}" font-size="21" '
-               f'font-weight="700">{esc(d.get("title", "EventStorming"))}</text>')
+               f"font-weight=\"700\" font-family=\"'Space Grotesk', sans-serif\" "
+               f'letter-spacing="0.6">{esc(d.get("title", "EventStorming").upper())}</text>')
     if d.get("story"):
         for k, ln in enumerate(wrap(d["story"], 13.5, total_w - 2 * MARGIN, 2)):
             out.append(f'<text x="{MARGIN}" y="{MARGIN + 28 + k * 17:.0f}" fill="{MUTED}" '
@@ -230,10 +228,11 @@ def render_diagram(d):
     for r in legend_roles:
         st = ROLE[r]
         lbl = st["label"]
-        out.append(f'<rect x="{lx:.1f}" y="{ly - 11:.0f}" width="15" height="15" rx="3" '
-                   f'fill="{st["fill"]}" stroke="{st["stroke"]}"/>')
-        out.append(f'<text x="{lx + 21:.1f}" y="{ly + 1:.0f}" fill="{INK}" font-size="12">{esc(lbl)}</text>')
-        lx += 21 + sum(char_w(c, 12) for c in lbl) + 26
+        out.append(f'<rect x="{lx:.1f}" y="{ly - 11:.0f}" width="15" height="15" '
+                   f'fill="{st["fill"]}" stroke="{INK}" stroke-width="2"/>')
+        out.append(f'<text x="{lx + 22:.1f}" y="{ly + 1:.0f}" fill="{INK}" font-size="12" '
+                   f"font-family=\"'Space Grotesk', sans-serif\" letter-spacing=\"0.4\">{esc(lbl.upper())}</text>")
+        lx += 22 + sum(char_w(c, 12) for c in lbl.upper()) + 26
 
     # vertical grammar connectors (behind stickies)
     chain = [r for r in ["actor", "command", "aggregate", "event", "policy"] if r in present]
@@ -277,8 +276,8 @@ def render_diagram(d):
             x = col_x(a) - 8
             w = (col_x(b) + STICKY_W) - col_x(a) + 16
             out.append(f'<rect x="{x:.1f}" y="{ry - 8:.1f}" width="{w:.1f}" height="{row_h["aggregate"] + 16:.1f}" '
-                       f'rx="10" fill="none" stroke="{ROLE["aggregate"]["stroke"]}" '
-                       f'stroke-width="1.2" stroke-dasharray="6 5" opacity="0.8"/>')
+                       f'fill="none" stroke="{INK}" '
+                       f'stroke-width="1.6" stroke-dasharray="6 5" opacity="0.55"/>')
 
     # stickies
     for r in present:
