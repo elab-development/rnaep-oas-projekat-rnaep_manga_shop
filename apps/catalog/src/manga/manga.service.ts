@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   type OnModuleInit,
 } from "@nestjs/common";
 import type {
@@ -30,6 +31,8 @@ interface ListParams {
 
 @Injectable()
 export class MangaService implements OnModuleInit {
+  private readonly logger = new Logger(MangaService.name);
+
   constructor(
     @Inject(MANGA_MODEL) private readonly model: MangaModel,
     private readonly currency: CurrencyService,
@@ -42,11 +45,21 @@ export class MangaService implements OnModuleInit {
    * be a no-op — Mongoose `timestamps` has been on since the schema's creation.
    */
   async onModuleInit(): Promise<void> {
-    await this.model
-      .updateMany({ createdAt: { $exists: false } }, [
-        { $set: { createdAt: { $toDate: "$_id" } } },
-      ])
-      .exec();
+    // Skipped under tests — fixtures already carry `createdAt`, and the scaffold
+    // health e2e boots with no Mongo, so awaiting a DB write here would stall
+    // startup past the test's boot timeout. Like the seeder it is also non-fatal:
+    // a missing/slow DB at boot must not crash the service (the health endpoint
+    // still answers); the backfill retries on the next start.
+    if (process.env.NODE_ENV === "test") return;
+    try {
+      await this.model
+        .updateMany({ createdAt: { $exists: false } }, [
+          { $set: { createdAt: { $toDate: "$_id" } } },
+        ])
+        .exec();
+    } catch (err) {
+      this.logger.warn(`Skipped createdAt backfill: ${(err as Error).message}`);
+    }
   }
 
   /**
