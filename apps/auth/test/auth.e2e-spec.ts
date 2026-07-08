@@ -82,7 +82,7 @@ describe("auth (e2e)", () => {
     expect((await register("short@example.com", "short")).status).toBe(400);
   });
 
-  it("logs in with valid credentials and returns a 15-minute token", async () => {
+  it("logs in with valid credentials and returns a 60-minute token", async () => {
     await register("bob@example.com", "password123");
     const res = await login("bob@example.com", "password123");
 
@@ -94,7 +94,7 @@ describe("auth (e2e)", () => {
     expect(payload.role).toBe("customer");
     expect(payload.email).toBe("bob@example.com");
     expect(payload.sub).toEqual(expect.any(String));
-    expect(payload.exp - payload.iat).toBe(15 * 60);
+    expect(payload.exp - payload.iat).toBe(60 * 60);
   });
 
   it("rejects a wrong password and an unknown email alike with 401", async () => {
