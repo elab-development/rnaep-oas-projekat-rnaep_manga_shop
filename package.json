@@ -1,0 +1,25 @@
+{
+  "name": "rnaep-manga-shop",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev stripe:webhook --concurrency=12",
+    "lint": "turbo lint",
+    "format": "turbo format",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test --concurrency=1"
+  },
+  "devDependencies": {
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.8.0",
+    "turbo": "^2.9.15",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=20"
+  }
+}

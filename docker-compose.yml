@@ -1,0 +1,351 @@
+# Manga Web Shop — local stack (slice 01 scaffold).
+#
+# Two workflows (ADR-0001 — a database per service):
+#
+#   docker compose up -d                 # backing infra only: the DBs + Kafka,
+#                                        # with host ports published. Then run
+#                                        # the apps as dev servers: `pnpm dev`.
+#
+#   docker compose --profile full up --build
+#                                        # the app in containers: the five
+#                                        # NestJS services + the Next.js web app.
+#
+#   docker compose --profile full --profile observability up --build
+#                                        # ...plus Prometheus + Grafana (the
+#                                        # `observability` profile, opt-in).
+#
+# Slice 01 only proves "everything boots": each service exposes a /health
+# endpoint used as its container healthcheck. Verify health (see README):
+# every service should report {"status":"ok"}.
+
+x-jwt-secret: &jwt-secret "dev-insecure-jwt-secret-change-me"
+
+services:
+  # ---- Databases -----------------------------------------------------------
+  postgres-auth:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth
+      POSTGRES_DB: auth
+    ports:
+      # 5543x on the host (not 5432) to avoid clashing with a native Postgres.
+      - "55432:5432"
+    # Postgres 18+ images store data in a major-version subdirectory, so the
+    # volume mounts at /var/lib/postgresql (not /var/lib/postgresql/data).
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-orders:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+      POSTGRES_DB: orders
+    ports:
+      - "55433:5432"
+    volumes:
+      - postgres-orders-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-payments:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: payments
+      POSTGRES_DB: payments
+    ports:
+      - "55434:5432"
+    volumes:
+      - postgres-payments-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payments -d payments"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- DB inspection -------------------------------------------------------
+  # Adminer — lightweight web UI for poking at the Postgres DBs. Open
+  # http://localhost:8080 and pick a server (postgres-auth / postgres-orders /
+  # postgres-payments); each uses its own name as user/password/db. Mongo is
+  # not an Adminer target — use mongosh for that.
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres-auth
+      - postgres-orders
+      - postgres-payments
+
+  # ---- Messaging -----------------------------------------------------------
+  # Official Apache Kafka image (KRaft, single-node, no ZooKeeper). Data is
+  # ephemeral — fine for a dev stack; the saga is rebuilt from sources, not
+  # replayed from the broker.
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      # Two broker listeners so both workflows reach the same single broker:
+      #   PLAINTEXT (kafka:9092)  — in-cluster: the `full`-profile services and
+      #                             inter-broker traffic (advertised as `kafka`).
+      #   HOST     (localhost:29092) — host `pnpm dev`: published to the host and
+      #                             advertised as `localhost`.
+      # Kafka's metadata handshake hands the client back the *advertised* address
+      # for the listener it connected on, so a host client must connect on a
+      # listener advertised as `localhost` (a client on the `kafka`-advertised one
+      # would be told to reconnect to `kafka`, which doesn't resolve off-cluster).
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,HOST://0.0.0.0:29092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,HOST://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+    ports:
+      # Host `pnpm dev` apps connect here (localhost:29092 → HOST listener).
+      - "29092:29092"
+    healthcheck:
+      # Broker is ready once it can answer a metadata/list request.
+      test:
+        ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---- Services ------------------------------------------------------------
+  gateway:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
+    environment:
+      PORT: "3000"
+      JWT_SECRET: *jwt-secret
+      AUTH_SERVICE_URL: "http://auth:3001"
+      CATALOG_URL: "http://catalog:3002"
+      ORDERS_URL: "http://orders:3003"
+      PAYMENTS_URL: "http://payments:3004"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/auth/Dockerfile
+    environment:
+      PORT: "3001"
+      JWT_SECRET: *jwt-secret
+      DATABASE_URL: "postgres://auth:auth@postgres-auth:5432/auth"
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  catalog:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/catalog/Dockerfile
+    environment:
+      PORT: "3002"
+      JWT_SECRET: *jwt-secret
+      MONGODB_URI: "mongodb://mongo:27017/catalog"
+      # Catalog consumes `order-created`/`payment-succeeded`/`payment-failed` and
+      # emits `stock-reserved`/`stock-rejected` over Kafka (issue 11, ADR-0003).
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_CLIENT_ID: "catalog"
+    ports:
+      - "3002:3002"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  orders:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/orders/Dockerfile
+    environment:
+      PORT: "3003"
+      JWT_SECRET: *jwt-secret
+      DATABASE_URL: "postgres://orders:orders@postgres-orders:5432/orders"
+      # Checkout emits `order-created` and Orders consumes the saga replies over
+      # Kafka (issue 11, ADR-0003) — no synchronous Catalog HTTP call any more.
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_CLIENT_ID: "orders"
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres-orders:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  payments:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/payments/Dockerfile
+    # Stripe test-mode secrets (ADR-0008) come from apps/payments/.env — the same
+    # git-ignored file `pnpm dev` loads — so there is a single place to set them.
+    # They are never baked into the image (.dockerignore); they are injected here
+    # at runtime. `required: false` so the stack still boots without the file (the
+    # Stripe key then falls back and card checkout fails loudly with a 502).
+    env_file:
+      - path: apps/payments/.env
+        required: false
+    environment:
+      PORT: "3004"
+      JWT_SECRET: *jwt-secret
+      DATABASE_URL: "postgres://payments:payments@postgres-payments:5432/payments"
+      # Payment announces the outcome by emitting `payment-succeeded` /
+      # `payment-failed` over Kafka (issue 11, ADR-0002/0003); Orders and Catalog
+      # settle from those events. The order amount is still read back from Orders
+      # over REST (a query, never the client). Stripe redirects land on the web app.
+      # These take precedence over apps/payments/.env, overriding its dev-only
+      # localhost values with the in-cluster hostnames.
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_CLIENT_ID: "payments"
+      ORDERS_URL: "http://orders:3003"
+      WEB_URL: "http://localhost:3010"
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres-payments:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Frontend ------------------------------------------------------------
+  # Next.js app served from its standalone build (apps/web/Dockerfile).
+  #
+  # Two gateway addresses, because the app fetches from both sides of the wire:
+  #   - the *browser* runs on the host, so it reaches the gateway at its
+  #     host-published address — NEXT_PUBLIC_GATEWAY_URL, inlined into the client
+  #     bundle at *build* time (default http://localhost:3000, the gateway's
+  #     published port). Passed as a build arg since NEXT_PUBLIC_* is baked in.
+  #   - server components / server actions run *inside* this container, where
+  #     localhost is the container itself — so they use GATEWAY_INTERNAL_URL at
+  #     run time to reach the gateway over the compose network.
+  # Stripe still redirects the browser back to http://localhost:3010 (payments
+  # WEB_URL), which is this service's published port.
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_GATEWAY_URL: "http://localhost:3000"
+        # Public base URL for SEO (canonical / sitemap / robots / OG). Baked in
+        # at build time like every NEXT_PUBLIC_*; a real deploy overrides it with
+        # its own domain. Defaults to the web container's published origin.
+        NEXT_PUBLIC_SITE_URL: "http://localhost:3010"
+    environment:
+      PORT: "3010"
+      GATEWAY_INTERNAL_URL: "http://gateway:3000"
+    ports:
+      - "3010:3010"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3010/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Observability -------------------------------------------------------
+  # On their own `observability` profile, not `full`: the metrics stack is
+  # optional and only useful once the services are running, so it's opt-in. Only
+  # the human operator starts it, and only by hand:
+  #   docker compose --profile full --profile observability up --build
+  #
+  # !! AI AGENTS / AUTOMATED TESTS: NEVER start this profile (or the
+  #    prom/prometheus or grafana/grafana images by any other means). On this
+  #    machine they exhaust resources and wedge the Docker daemon, breaking every
+  #    other `docker compose` command. See AGENTS.md → "Hard constraints".
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.12.0
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:13.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3030:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres-auth-data:
+  postgres-orders-data:
+  postgres-payments-data:
+  mongo-data:
+  grafana-data:

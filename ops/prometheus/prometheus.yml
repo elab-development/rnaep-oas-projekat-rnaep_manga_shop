@@ -1,0 +1,24 @@
+# Prometheus scrape config (slice 12 — observability).
+#
+# Every service exposes /metrics via @workspace/observability: request rate,
+# latency histogram, and error counts, each sample tagged with a `service`
+# label. Prometheus scrapes itself plus the five services; Grafana reads it back
+# through the provisioned dashboards. The `service` label rides on the metrics
+# themselves, so no per-target relabeling is needed here.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "gateway:3000"
+          - "auth:3001"
+          - "catalog:3002"
+          - "orders:3003"
+          - "payments:3004"

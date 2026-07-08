@@ -1,0 +1,13 @@
+# Grafana datasource provisioning: point Grafana at the Prometheus container so
+# it boots ready-to-use. The fixed `uid` lets the provisioned dashboards
+# (slice 12) reference this datasource deterministically.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

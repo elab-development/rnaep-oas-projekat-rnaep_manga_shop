@@ -1,0 +1,81 @@
+{
+  "diagrams": [
+    {
+      "id": "orders-db",
+      "title": "Orders Service — Conceptual Class Diagram (PostgreSQL)",
+      "subtitle": "Relational model: strong consistency for the order lifecycle",
+      "classes": [
+        {"id": "customer", "name": "Customer", "stereotype": "entity", "tier": 0,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "email", "type": "String", "key": "UK"},
+           {"name": "fullName", "type": "String"}
+         ]},
+        {"id": "order", "name": "Order", "stereotype": "entity", "tier": 1,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "customerId", "type": "UUID", "key": "FK"},
+           {"name": "status", "type": "OrderStatus"},
+           {"name": "placedAt", "type": "Timestamp"},
+           {"name": "total", "type": "Money"}
+         ]},
+        {"id": "orderline", "name": "OrderLine", "stereotype": "entity", "tier": 2,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "orderId", "type": "UUID", "key": "FK"},
+           {"name": "productId", "type": "UUID", "key": "FK"},
+           {"name": "quantity", "type": "Integer"},
+           {"name": "unitPrice", "type": "Money"}
+         ]},
+        {"id": "payment", "name": "Payment", "stereotype": "entity", "tier": 2,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "orderId", "type": "UUID", "key": "FK"},
+           {"name": "amount", "type": "Money"},
+           {"name": "method", "type": "PaymentMethod"}
+         ]}
+      ],
+      "relationships": [
+        {"from": "order", "to": "customer", "type": "association", "fromMult": "*", "toMult": "1", "label": "placed by"},
+        {"from": "order", "to": "orderline", "type": "composition", "fromMult": "1", "toMult": "1..*", "label": "contains"},
+        {"from": "order", "to": "payment", "type": "aggregation", "fromMult": "1", "toMult": "0..*", "label": "settled by"}
+      ]
+    },
+    {
+      "id": "catalog-db",
+      "title": "Catalog Service — Conceptual Class Diagram (PostgreSQL)",
+      "subtitle": "Relational model with a product/variant hierarchy",
+      "classes": [
+        {"id": "category", "name": "Category", "stereotype": "entity", "tier": 0,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "name", "type": "String"},
+           {"name": "parentId", "type": "UUID", "key": "FK"}
+         ]},
+        {"id": "product", "name": "Product", "stereotype": "entity", "tier": 1,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "categoryId", "type": "UUID", "key": "FK"},
+           {"name": "sku", "type": "String", "key": "UK"},
+           {"name": "name", "type": "String"}
+         ]},
+        {"id": "variant", "name": "ProductVariant", "stereotype": "entity", "tier": 2,
+         "attributes": [
+           {"name": "id", "type": "UUID", "key": "PK"},
+           {"name": "productId", "type": "UUID", "key": "FK"},
+           {"name": "size", "type": "String"},
+           {"name": "stock", "type": "Integer"}
+         ]},
+        {"id": "physical", "name": "PhysicalProduct", "stereotype": "entity", "tier": 2,
+         "attributes": [
+           {"name": "weightGrams", "type": "Integer"}
+         ]}
+      ],
+      "relationships": [
+        {"from": "product", "to": "category", "type": "association", "fromMult": "*", "toMult": "1", "label": "in"},
+        {"from": "product", "to": "variant", "type": "composition", "fromMult": "1", "toMult": "1..*", "label": "has"},
+        {"from": "physical", "to": "product", "type": "generalization"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@workspace/auth-guard",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "lint": "eslint src",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/passport": "^11",
+    "@workspace/contracts": "workspace:*",
+    "passport": "^0.7",
+    "passport-jwt": "^4",
+    "reflect-metadata": "^0.2"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@types/passport-jwt": "^4",
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "eslint": "^9",
+    "typescript": "^5"
+  }
+}

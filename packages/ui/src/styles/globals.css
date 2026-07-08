@@ -1,0 +1,267 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+@source "../../../apps/**/*.{ts,tsx}";
+@source "../../../components/**/*.{ts,tsx}";
+@source "../**/*.{ts,tsx}";
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+
+    /* ADR-0014 status accents — closed set, exposed as bg-/text-/border- utilities */
+    --color-status-pending: var(--status-pending);
+    --color-status-pending-foreground: var(--status-pending-foreground);
+    --color-status-paid: var(--status-paid);
+    --color-status-paid-foreground: var(--status-paid-foreground);
+    --color-status-shipped: var(--status-shipped);
+    --color-status-shipped-foreground: var(--status-shipped-foreground);
+    --color-status-cancelled: var(--status-cancelled);
+    --color-status-cancelled-foreground: var(--status-cancelled-foreground);
+    --color-status-inert: var(--status-inert);
+    --color-status-inert-foreground: var(--status-inert-foreground);
+
+    /* ADR-0014 hard offset shadows — zero blur, ink-colored, so they flip with the theme */
+    --shadow-brutal: 4px 4px 0 0 var(--foreground);
+    --shadow-brutal-lg: 6px 6px 0 0 var(--foreground);
+    --shadow-brutal-sm: 2px 2px 0 0 var(--foreground);
+
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+    --font-sans: var(--font-sans);
+}
+
+:root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.141 0.005 285.823);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.141 0.005 285.823);
+    /* ADR-0014: primary action = attention yellow, black ink on top */
+    --primary: oklch(0.86 0.17 95);
+    --primary-foreground: oklch(0 0 0);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --accent: oklch(0.967 0.001 286.375);
+    --accent-foreground: oklch(0.21 0.006 285.885);
+    --destructive: oklch(0.577 0.245 27.325);
+    /* ADR-0014: borders are ink, not soft grey */
+    --border: var(--foreground);
+    --input: var(--foreground);
+    /* ADR-0014: focus ring is solid ink, not a soft grey */
+    --ring: var(--foreground);
+
+    /* ADR-0014: chunky borders, driven by one variable (never hardcoded per component) */
+    --border-width: 3px;
+    --border-width-emphasis: 5px;
+    --border-width-chip: 2px;
+
+    /* ADR-0014: screentone dot field — the one background texture. Ink-based and
+       low-alpha so it reads as atmosphere; color-mix re-resolves per theme. */
+    --dots: color-mix(in oklab, var(--foreground) 8%, transparent);
+
+    /* ADR-0014 status accents (light) — fully saturated */
+    --status-pending: oklch(0.86 0.17 95);            /* yellow  — pending_payment, low stock */
+    --status-pending-foreground: oklch(0 0 0);
+    --status-paid: oklch(0.72 0.17 150);              /* green   — paid, in stock */
+    --status-paid-foreground: oklch(0 0 0);
+    --status-shipped: oklch(0.55 0.2 255);            /* blue    — shipped */
+    --status-shipped-foreground: oklch(1 0 0);
+    --status-cancelled: var(--destructive);           /* red     — cancelled, failed, out of stock */
+    --status-cancelled-foreground: oklch(1 0 0);
+    --status-inert: oklch(0.87 0.004 286.32);         /* grey    — refunded, expired, disabled */
+    --status-inert-foreground: oklch(0.35 0.006 285.938);
+
+    --chart-1: oklch(0.808 0.114 19.571);
+    --chart-2: oklch(0.637 0.237 25.331);
+    --chart-3: oklch(0.577 0.245 27.325);
+    --chart-4: oklch(0.505 0.213 27.518);
+    --chart-5: oklch(0.444 0.177 26.899);
+    --radius: 0;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.141 0.005 285.823);
+    --sidebar-primary: oklch(0.577 0.245 27.325);
+    --sidebar-primary-foreground: oklch(0.971 0.013 17.38);
+    --sidebar-accent: oklch(0.967 0.001 286.375);
+    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+    --sidebar-border: oklch(0.92 0.004 286.32);
+    --sidebar-ring: oklch(0.705 0.015 286.067);
+}
+
+.dark {
+    --background: oklch(0.141 0.005 285.823);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.21 0.006 285.885);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.21 0.006 285.885);
+    --popover-foreground: oklch(0.985 0 0);
+    /* ADR-0014: toned-down yellow so it doesn't vibrate on near-black */
+    --primary: oklch(0.8 0.12 95);
+    --primary-foreground: oklch(0 0 0);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.274 0.006 286.033);
+    --muted-foreground: oklch(0.705 0.015 286.067);
+    --accent: oklch(0.274 0.006 286.033);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    /* ADR-0014: borders are ink (white in dark) */
+    --border: var(--foreground);
+    --input: var(--foreground);
+    /* ADR-0014: focus ring follows ink (white in dark) */
+    --ring: var(--foreground);
+
+    /* Border widths are theme-invariant — inherited from :root, not redefined here. */
+
+    /* ADR-0014 status accents (dark) — full retune: lower chroma to stop halation */
+    --status-pending: oklch(0.8 0.12 95);             /* yellow */
+    --status-pending-foreground: oklch(0 0 0);
+    --status-paid: oklch(0.66 0.12 150);              /* green */
+    --status-paid-foreground: oklch(0 0 0);
+    --status-shipped: oklch(0.62 0.13 255);           /* blue */
+    --status-shipped-foreground: oklch(1 0 0);
+    --status-cancelled: var(--destructive);           /* red (shadcn dark destructive) */
+    --status-cancelled-foreground: oklch(1 0 0);
+    --status-inert: oklch(0.4 0.005 286.32);          /* grey */
+    --status-inert-foreground: oklch(0.9 0 0);
+
+    --chart-1: oklch(0.808 0.114 19.571);
+    --chart-2: oklch(0.637 0.237 25.331);
+    --chart-3: oklch(0.577 0.245 27.325);
+    --chart-4: oklch(0.505 0.213 27.518);
+    --chart-5: oklch(0.444 0.177 26.899);
+    --sidebar: oklch(0.21 0.006 285.885);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.637 0.237 25.331);
+    --sidebar-primary-foreground: oklch(0.971 0.013 17.38);
+    --sidebar-accent: oklch(0.274 0.006 286.033);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.552 0.016 285.938);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+    }
+}
+
+/* ADR-0014: named border weights, all reading the width variables so nothing
+   is hardcoded per component. Plain `border` stays Tailwind's 1px for thin
+   divider rules; boxes opt into `border-box` (3px) / `border-emphasis` (5px);
+   inputs and chips use `border-chip` (2px). */
+@utility border-box {
+  border-style: var(--tw-border-style, solid);
+  border-width: var(--border-width);
+}
+@utility border-emphasis {
+  border-style: var(--tw-border-style, solid);
+  border-width: var(--border-width-emphasis);
+}
+@utility border-chip {
+  border-style: var(--tw-border-style, solid);
+  border-width: var(--border-width-chip);
+}
+
+/* ADR-0014: screentone dot field. Override --dots locally (e.g. on an inked
+   panel) to flip the dots light: [--dots:color-mix(in_oklab,var(--background)_14%,transparent)]. */
+@utility bg-dots {
+  background-image: radial-gradient(var(--dots) 1.1px, transparent 1.2px);
+  background-size: 12px 12px;
+}
+
+/* ADR-0014: the signature brutalist primitives — ink border + hard offset shadow.
+   `.brutal-box` is the *static* surface (cards, panels, hero). It never presses:
+   the press-into-shadow motion belongs to `.brutal-btn` below, because only an
+   interactive control should react to :active. A container that translated when a
+   button inside it was clicked was the catalog-form "whole box jumps" bug — CSS
+   :active matches the activated element *and its ancestors*. The transition stays
+   so `.brutal-box`'s opt-in hover motion (e.g. the catalog card's lift) still eases.
+   No radius, no blur, no easing curves. */
+@layer components {
+  .brutal-box {
+    border-radius: 0;
+    border-width: var(--border-width);
+    border-style: solid;
+    border-color: var(--foreground);
+    box-shadow: var(--shadow-brutal);
+    transition: transform 60ms steps(2), box-shadow 60ms steps(2);
+  }
+  .brutal-box-lg {
+    border-width: var(--border-width-emphasis);
+    box-shadow: var(--shadow-brutal-lg);
+  }
+}
+
+/* ADR-0014: reusable brutalist button skin — ink border, hard offset shadow, and
+   the signature press that translates the control into its own shrunk shadow.
+   Composes onto <Button>/buttonVariants() and raw <button>/<a>. Deliberately
+   UNLAYERED (not @layer/@utility) so it beats the cva base's `border-transparent`
+   and `active:translate-y-px` utilities by cascade origin — no tailwind-merge
+   awareness required. Disabled buttons get `pointer-events-none` from the cva base,
+   so :hover/:active never fire and the shadow simply stays put. */
+.brutal-btn {
+  border-color: var(--foreground);
+  box-shadow: var(--shadow-brutal);
+  transition: transform 60ms steps(2), box-shadow 60ms steps(2);
+}
+.brutal-btn:hover {
+  box-shadow: var(--shadow-brutal-sm);
+}
+
+/* The press-into-shadow motion itself, factored out so a `.brutal-box` that is
+   *also* the clickable element (e.g. the catalog card `<a>`) can opt in without
+   the button skin's hover-shadow-shrink — the card lifts on hover instead, and a
+   shrinking shadow would fight that. Interactive boxes only: pressing a static
+   container that wraps buttons is the ancestor-:active bug .brutal-box avoids. */
+.brutal-btn:active,
+.brutal-press:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-brutal-sm);
+}

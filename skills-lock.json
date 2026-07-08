@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "skills": {
+    "domain-modeling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/domain-modeling/SKILL.md",
+      "computedHash": "65da9ce611a203fc6b9ecf95254cf845857243d958cb0d64df556cad87c76312"
+    },
+    "frontend-design": {
+      "source": "vercel-labs/agent-eval",
+      "sourceType": "github",
+      "skillPath": "packages/playground/.agents/skills/frontend-design/SKILL.md",
+      "computedHash": "537c1df9d0c694ecf9139a911f9ad0bd111a7ebc173a55457568459e543fe75b"
+    },
+    "grill-with-docs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
+      "computedHash": "559d4de044394b86af53a5cedd2d3a689770088c3c5361646c91f5d7ea59f78a"
+    },
+    "implement": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/implement/SKILL.md",
+      "computedHash": "a29d88494f7365d9df383b22a1df8411088d636d6c328f4a6e11d039143d166f"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "4c4d2b6da48482c1a054aca0e09eafd61cdcbebe2bda10abd3f355bf5f6fc57c"
+    },
+    "review": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/in-progress/review/SKILL.md",
+      "computedHash": "270e0e7151ccd0b9623163396e1137a7fe013e0e1a07fd02ca03ead4efdcc21c"
+    },
+    "setup-matt-pocock-skills": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "computedHash": "cbca37faf13eba4a3dfcd87be19c5d5580e0c89dfffddf7748b5d6d7b96e57cf"
+    },
+    "stripe-best-practices": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "fc3bec305bdf8b980991364633ff45e3051536de8a68e6c87b3f717054c2b06b"
+    },
+    "stripe-directory": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "58d8c458beaa92877ed2f0a622af65a0a91e2804efcc4188ac87a35780015361"
+    },
+    "stripe-projects": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "c084f4044a8d267c096e8391935e5547004a9ab003eaf34ee606041d2485f6c3"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "computedHash": "5d94c0930f58405485bbac1f7bb2dce7ed833702257912a63dcaf03c8e83d78e"
+    },
+    "to-issues": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-issues/SKILL.md",
+      "computedHash": "c1bfbb12c04ebfc14225a5553ec95acc42a57d09ae78e58377c648107b9605ed"
+    },
+    "to-prd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-prd/SKILL.md",
+      "computedHash": "7e1950ebb84721293b913d54481e0723172abb23fa5e0d0d488594ca45ffb421"
+    },
+    "upgrade-stripe": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "46bb3c16878f93b953ed901b950686d64f04f90c67400bf31e1a0d7790d889df"
+    }
+  }
+}

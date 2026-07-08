@@ -1,0 +1,49 @@
+import {
+  Inject,
+  Injectable,
+  Logger,
+  Module,
+  type OnModuleInit,
+} from "@nestjs/common";
+import { CurrencyModule } from "../currency/currency.module";
+import { JikanModule } from "../jikan/jikan.module";
+import { MangaController } from "./manga.controller";
+import { MangaService } from "./manga.service";
+import { MANGA_MODEL, mangaModelProvider, type MangaModel } from "./manga.schema";
+import { SEED_MANGA } from "./seed";
+
+/**
+ * Seeds a handful of demo manga on first boot so the list renders immediately
+ * (issue 03). Idempotent — only seeds an empty collection — and skipped under
+ * tests, which insert their own fixtures against an ephemeral Mongo.
+ */
+@Injectable()
+export class MangaSeeder implements OnModuleInit {
+  private readonly logger = new Logger(MangaSeeder.name);
+
+  constructor(@Inject(MANGA_MODEL) private readonly model: MangaModel) {}
+
+  async onModuleInit(): Promise<void> {
+    if (process.env.NODE_ENV === "test") return;
+    try {
+      const count = await this.model.estimatedDocumentCount().exec();
+      if (count > 0) return;
+      await this.model.insertMany(SEED_MANGA);
+      this.logger.log(`Seeded ${SEED_MANGA.length} manga`);
+    } catch (err) {
+      // Non-fatal: a missing DB at boot must not crash the service (the health
+      // endpoint still answers). Seeding retries on the next start.
+      this.logger.warn(`Skipped seeding: ${(err as Error).message}`);
+    }
+  }
+}
+
+@Module({
+  imports: [CurrencyModule, JikanModule],
+  controllers: [MangaController],
+  providers: [mangaModelProvider, MangaService, MangaSeeder],
+  // Export the model token too so the Reservation feature can share the single
+  // Manga model binding (re-binding it on the same connection would throw).
+  exports: [MangaService, MANGA_MODEL],
+})
+export class MangaModule {}
