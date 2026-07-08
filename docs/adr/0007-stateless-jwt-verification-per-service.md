@@ -8,6 +8,6 @@ Every service verifies the JWT itself using the shared `JWT_SECRET`, via a reusa
 
 **Rejected — gateway-only validation with services trusting injected identity headers:** spoofable if a service is ever reachable off the internal network; security would rest solely on network isolation. Local per-service verification is defense-in-depth and is what the Seminarski's per-service IDOR guards need (a trustworthy `userId` at the service).
 
-**Revocation:** tokens are short-lived (15 min), so a compromised token's exposure is small; instant revocation is not implemented. If needed later, add a small revoked-token denylist rather than per-request introspection.
+**Revocation:** tokens are short-lived (60 min), so a compromised token's exposure is bounded; instant revocation is not implemented. If needed later, add a small revoked-token denylist rather than per-request introspection.
 
 Identity for ownership/IDOR checks always comes from the verified token, never from the request body or params. The token travels in the `Authorization: Bearer` header (not a cookie), per the CSRF mitigation.
