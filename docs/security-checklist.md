@@ -96,7 +96,7 @@ audited items.
 
 ## Residual / out of scope
 
-- Instant token revocation is not implemented; tokens are short-lived (15 min,
+- Instant token revocation is not implemented; tokens are short-lived (60 min,
   ADR-0007). A denylist can be added later if needed.
 - Log-and-drop Kafka failure handling (ADR-0013) can leave an order out of sync;
   accepted at project scope.
