@@ -54,7 +54,7 @@ describe("cart (e2e)", () => {
   /** Mints a valid customer token — stands in for the Auth service's login. */
   function tokenFor(customerId: string, email = "c@example.com"): string {
     return jwt.sign({ sub: customerId, role: "customer", email }, getJwtSecret(), {
-      expiresIn: "15m",
+      expiresIn: "60m",
     });
   }
 
