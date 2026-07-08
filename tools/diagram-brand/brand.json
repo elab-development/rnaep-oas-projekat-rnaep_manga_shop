@@ -1,0 +1,21 @@
+{
+  "$comment": "Machine-readable brand tokens for diagrams. Source of truth: ADR-0014 + packages/ui/src/styles/globals.css. sRGB hex are approximations of the oklch source values, tuned for flat diagram fills.",
+  "ink": "#18181B",
+  "paper": "#FFFFFF",
+  "muted": "#6B7280",
+  "dotsOpacity": 0.08,
+  "accents": {
+    "yellow": { "hex": "#F4C518", "on": "#000000", "means": "primary action / attention · pending_payment · low stock" },
+    "green":  { "hex": "#2FC06E", "on": "#000000", "means": "good / go · paid · in stock" },
+    "blue":   { "hex": "#3457DD", "on": "#FFFFFF", "means": "in transit · shipped" },
+    "red":    { "hex": "#E03127", "on": "#FFFFFF", "means": "dead end · cancelled · failed · out of stock" },
+    "grey":   { "hex": "#D4D4D8", "on": "#52525B", "means": "inert · refunded · expired · disabled" }
+  },
+  "border": { "chip": 2, "box": 3, "emphasis": 5 },
+  "radius": 0,
+  "shadow": { "box": 7, "hero": 10, "color": "#18181B", "blur": 0 },
+  "fonts": {
+    "heading": { "family": "Space Grotesk", "weight": 700, "uppercase": true, "tracking": 0.6 },
+    "body":    { "family": "Space Mono", "weight": 400 }
+  }
+}

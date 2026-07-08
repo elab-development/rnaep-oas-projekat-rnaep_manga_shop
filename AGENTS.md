@@ -40,3 +40,23 @@ Default triage vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `rea
 ### Domain docs
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Diagrams & visual artifacts
+
+Any diagram, chart, canvas, or slide generated for this project — whatever skill
+produces it — **must** use the project's neo-brutalist house style (ADR-0014) and
+be rendered with the shared toolkit. Do not invent per-diagram styling and do not
+rasterize with `sharp`/`librsvg` (it ignores embedded `@font-face`, so brand fonts
+are lost).
+
+- **Style:** apply `tools/diagram-brand/brand.md` (tokens in `brand.json`) — white
+  chassis + dot field, ink borders, hard zero-blur offset shadows, sharp corners,
+  the closed accent set, Space Grotesk (heavy, UPPERCASE) headings + Space Mono body.
+- **Render:** emit an SVG whose text uses those font families, then finalize with
+  `node tools/diagram-brand/render.mjs <in.svg> -o .ignore/diagrams` — it embeds the
+  fonts (self-contained SVG) and rasterizes a font-correct PNG via `@resvg/resvg-js`.
+  Always deliver **both** the SVG and PNG.
+- **Architecture Canvas:** use the branded generator at
+  `tools/diagram-brand/generators/architecture-canvas.py`, then the render step above.
+
+Diagram outputs go to `.ignore/diagrams/` (git-ignored) unless asked otherwise.
