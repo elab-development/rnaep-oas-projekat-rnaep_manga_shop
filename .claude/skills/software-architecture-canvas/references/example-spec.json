@@ -1,0 +1,17 @@
+{
+  "title": "Acme Notes — Software Architecture Canvas",
+  "subtitle": "v1.0 · Generated 2026-07-08 · maintained by Platform team",
+  "sections": {
+    "stakeholders": ["End users (note-takers)", "Team admins", "Support engineers", "Third-party plugin devs"],
+    "goals": ["Fast, reliable note capture", "Real-time sync across devices", "Reduce churn via collaboration", "GDPR-compliant data handling"],
+    "constraints": ["Must run on existing AWS org", "EU data residency required", "Small team (4 engineers)", "Budget: serverless-first"],
+    "external": ["Auth0 (identity)", "Stripe (billing)", "SendGrid (email)", "S3 (attachments)", "OpenAI API (summaries)"],
+    "components": ["Web SPA (React)", "REST/GraphQL API gateway", "Notes service", "Sync engine (CRDT)", "Search indexer"],
+    "data": ["PostgreSQL (primary store)", "Redis (cache + presence)", "OpenSearch (full-text)", "S3 (blobs)", "Event log (Kafka)"],
+    "techstack": ["TypeScript / Node.js", "React + Vite", "PostgreSQL 16", "Terraform IaC", "Docker + ECS Fargate"],
+    "quality": ["p95 latency < 200ms", "99.9% uptime target", "Sync conflict-free (CRDT)", "Horizontal scalability"],
+    "crosscutting": ["Auth via OIDC/JWT", "Structured logging + tracing", "Rate limiting at gateway", "Encryption at rest & transit"],
+    "decisions": ["ADR-012: CRDT over OT for sync", "ADR-018: Postgres over DynamoDB", "Risk: OpenAI API cost at scale", "Risk: single-region latency for APAC users"],
+    "deployment": ["AWS eu-west-1", "ECS Fargate + ALB", "CI/CD via GitHub Actions", "Blue/green deploys"]
+  }
+}
