@@ -1,0 +1,82 @@
+{
+  "database": "reviews_service",
+  "engine": "MongoDB",
+  "rationale": "Reviews are hierarchical (nested replies), have a flexible/evolving shape, are write-heavy and read denormalized per product — quality attributes that favour a document store over relational.",
+  "collections": [
+    {
+      "collection": "reviews",
+      "description": "Customer product reviews, with embedded replies. Read per product, newest first.",
+      "modeling": "Embed `replies` (bounded, owned by the review, read together). Reference `productId` and `customerId` by id — they belong to the Catalog and Orders services.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": ["_id", "productId", "customerId", "rating", "createdAt"],
+          "additionalProperties": false,
+          "properties": {
+            "_id": { "bsonType": "objectId" },
+            "productId": { "bsonType": "string", "description": "references Catalog product id" },
+            "customerId": { "bsonType": "string", "description": "references Orders customer id" },
+            "rating": { "bsonType": "int", "minimum": 1, "maximum": 5 },
+            "title": { "bsonType": "string", "maxLength": 120 },
+            "body": { "bsonType": "string" },
+            "images": {
+              "bsonType": "array",
+              "items": { "bsonType": "string", "description": "image URL" }
+            },
+            "helpfulVotes": { "bsonType": "int", "minimum": 0 },
+            "status": { "bsonType": "string", "enum": ["published", "pending", "removed"] },
+            "replies": {
+              "bsonType": "array",
+              "description": "embedded merchant/customer replies",
+              "items": {
+                "bsonType": "object",
+                "required": ["author", "body", "createdAt"],
+                "properties": {
+                  "author": { "bsonType": "string" },
+                  "body": { "bsonType": "string" },
+                  "createdAt": { "bsonType": "date" }
+                }
+              }
+            },
+            "createdAt": { "bsonType": "date" }
+          }
+        }
+      },
+      "indexes": [
+        { "keys": { "productId": 1, "createdAt": -1 }, "note": "list reviews for a product, newest first" },
+        { "keys": { "customerId": 1 }, "note": "a customer's own reviews" }
+      ]
+    },
+    {
+      "collection": "productRatingSummary",
+      "description": "Denormalized rating aggregate per product (a read model), updated when reviews change.",
+      "modeling": "Keyed by productId (as _id). Pure read model; recomputed from `reviews`.",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": ["_id", "average", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "_id": { "bsonType": "string", "description": "productId" },
+            "average": { "bsonType": "double", "minimum": 0, "maximum": 5 },
+            "count": { "bsonType": "int", "minimum": 0 },
+            "histogram": {
+              "bsonType": "object",
+              "properties": {
+                "1": { "bsonType": "int", "minimum": 0 },
+                "2": { "bsonType": "int", "minimum": 0 },
+                "3": { "bsonType": "int", "minimum": 0 },
+                "4": { "bsonType": "int", "minimum": 0 },
+                "5": { "bsonType": "int", "minimum": 0 }
+              }
+            },
+            "updatedAt": { "bsonType": "date" }
+          }
+        }
+      },
+      "indexes": [
+        { "keys": { "average": -1 }, "note": "top-rated products" }
+      ]
+    }
+  ]
+}

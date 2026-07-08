@@ -1,0 +1,39 @@
+{
+  "database": "<service>_service",
+  "engine": "MongoDB",
+  "collections": [
+    {
+      "collection": "<collectionName>",
+      "description": "What this collection stores and its main access pattern.",
+      "modeling": "Embed X (read together, owned here); reference Y by id (another aggregate/service).",
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": ["_id", "<field>", "createdAt"],
+          "additionalProperties": true,
+          "properties": {
+            "_id": { "bsonType": "objectId" },
+            "<field>": { "bsonType": "string", "description": "..." },
+            "<referenceId>": { "bsonType": "string", "description": "references <OtherService> <entity> id" },
+            "<number>": { "bsonType": "int", "minimum": 0 },
+            "<enum>": { "bsonType": "string", "enum": ["A", "B", "C"] },
+            "<embeddedArray>": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "object",
+                "required": ["<subField>"],
+                "properties": {
+                  "<subField>": { "bsonType": "string" }
+                }
+              }
+            },
+            "createdAt": { "bsonType": "date" }
+          }
+        }
+      },
+      "indexes": [
+        { "keys": { "<referenceId>": 1, "createdAt": -1 }, "note": "primary read path" }
+      ]
+    }
+  ]
+}
