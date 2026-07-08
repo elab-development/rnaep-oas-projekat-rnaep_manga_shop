@@ -1,0 +1,82 @@
+{
+  "app": "ShopSphere",
+  "diagrams": [
+    {
+      "id": "context", "level": 1,
+      "title": "Level 1 — System Context: ShopSphere",
+      "subtitle": "How the e-commerce platform fits with its users and external systems",
+      "nodes": [
+        {"id": "customer", "type": "person", "name": "Customer", "desc": "Browses and buys products", "tier": 0},
+        {"id": "admin", "type": "person", "name": "Store Admin", "desc": "Manages catalog and orders", "tier": 0},
+        {"id": "shopsphere", "type": "system", "name": "ShopSphere", "tech": "", "desc": "Online store: catalog, cart, checkout, orders", "tier": 1},
+        {"id": "payment", "type": "system_ext", "name": "Stripe", "desc": "Payment processing", "tier": 2},
+        {"id": "email", "type": "system_ext", "name": "SendGrid", "desc": "Transactional email", "tier": 2},
+        {"id": "shipping", "type": "system_ext", "name": "ShipEngine", "desc": "Shipping & tracking", "tier": 2}
+      ],
+      "rels": [
+        {"from": "customer", "to": "shopsphere", "label": "Browses, orders", "tech": "HTTPS"},
+        {"from": "admin", "to": "shopsphere", "label": "Manages", "tech": "HTTPS"},
+        {"from": "shopsphere", "to": "payment", "label": "Charges cards", "tech": "REST"},
+        {"from": "shopsphere", "to": "email", "label": "Sends receipts", "tech": "REST"},
+        {"from": "shopsphere", "to": "shipping", "label": "Books shipments", "tech": "REST"}
+      ]
+    },
+    {
+      "id": "container", "level": 2,
+      "title": "Level 2 — Container: ShopSphere",
+      "subtitle": "Microservice decomposition (Catalog, Orders, Payments services)",
+      "boundaries": [{"id": "ss", "label": "ShopSphere", "type": "system"}],
+      "nodes": [
+        {"id": "customer", "type": "person", "name": "Customer", "tier": 0},
+        {"id": "spa", "type": "container", "name": "Web Storefront", "tech": "React SPA", "desc": "Browser app for shopping", "tier": 1, "boundary": "ss"},
+        {"id": "gateway", "type": "container", "name": "API Gateway", "tech": "Node.js / Express", "desc": "Routing, auth, rate limiting", "tier": 2, "boundary": "ss"},
+        {"id": "catalog", "type": "container", "name": "Catalog Service", "tech": "Go", "desc": "Products, search, inventory", "tier": 3, "boundary": "ss"},
+        {"id": "orders", "type": "container", "name": "Orders Service", "tech": "Java / Spring", "desc": "Cart, checkout, order lifecycle", "tier": 3, "boundary": "ss"},
+        {"id": "payments", "type": "container", "name": "Payments Service", "tech": "Python / FastAPI", "desc": "Charges, refunds, ledger", "tier": 3, "boundary": "ss"},
+        {"id": "catalogdb", "type": "container_db", "name": "Catalog DB", "tech": "PostgreSQL", "tier": 4, "boundary": "ss"},
+        {"id": "ordersdb", "type": "container_db", "name": "Orders DB", "tech": "PostgreSQL", "tier": 4, "boundary": "ss"},
+        {"id": "paymentsdb", "type": "container_db", "name": "Payments DB", "tech": "PostgreSQL", "tier": 4, "boundary": "ss"},
+        {"id": "stripe", "type": "system_ext", "name": "Stripe", "desc": "Payment processing", "tier": 4}
+      ],
+      "rels": [
+        {"from": "customer", "to": "spa", "label": "Uses", "tech": "HTTPS"},
+        {"from": "spa", "to": "gateway", "label": "API calls", "tech": "JSON/HTTPS"},
+        {"from": "gateway", "to": "catalog", "label": "Routes", "tech": "gRPC"},
+        {"from": "gateway", "to": "orders", "label": "Routes", "tech": "gRPC"},
+        {"from": "gateway", "to": "payments", "label": "Routes", "tech": "gRPC"},
+        {"from": "catalog", "to": "catalogdb", "label": "Reads/writes", "tech": "SQL"},
+        {"from": "orders", "to": "ordersdb", "label": "Reads/writes", "tech": "SQL"},
+        {"from": "payments", "to": "paymentsdb", "label": "Reads/writes", "tech": "SQL"},
+        {"from": "orders", "to": "catalog", "label": "Checks stock", "tech": "gRPC"},
+        {"from": "orders", "to": "payments", "label": "Requests charge", "tech": "gRPC"},
+        {"from": "payments", "to": "stripe", "label": "Charges", "tech": "REST"}
+      ]
+    },
+    {
+      "id": "component-orders", "level": 3,
+      "title": "Level 3 — Component: Orders Service",
+      "subtitle": "Internal components of the Orders microservice",
+      "boundaries": [{"id": "os", "label": "Orders Service", "type": "container"}],
+      "nodes": [
+        {"id": "gw", "type": "container", "name": "API Gateway", "tech": "Express", "tier": 0},
+        {"id": "ctrl", "type": "component", "name": "Order Controller", "tech": "Spring MVC", "desc": "REST endpoints for cart & orders", "tier": 1, "boundary": "os"},
+        {"id": "cart", "type": "component", "name": "Cart Manager", "tech": "Spring Bean", "desc": "Cart state & pricing", "tier": 2, "boundary": "os"},
+        {"id": "checkout", "type": "component", "name": "Checkout Orchestrator", "tech": "Spring Bean", "desc": "Coordinates stock, payment, order", "tier": 2, "boundary": "os"},
+        {"id": "repo", "type": "component", "name": "Order Repository", "tech": "Spring Data JPA", "desc": "Persistence for orders", "tier": 3, "boundary": "os"},
+        {"id": "ordersdb", "type": "container_db", "name": "Orders DB", "tech": "PostgreSQL", "tier": 4},
+        {"id": "catalog", "type": "container", "name": "Catalog Service", "tech": "Go", "tier": 3},
+        {"id": "payments", "type": "container", "name": "Payments Service", "tech": "FastAPI", "tier": 3}
+      ],
+      "rels": [
+        {"from": "gw", "to": "ctrl", "label": "Routes to", "tech": "gRPC"},
+        {"from": "ctrl", "to": "cart", "label": "Uses"},
+        {"from": "ctrl", "to": "checkout", "label": "Uses"},
+        {"from": "checkout", "to": "cart", "label": "Reads cart"},
+        {"from": "checkout", "to": "repo", "label": "Persists order"},
+        {"from": "repo", "to": "ordersdb", "label": "Reads/writes", "tech": "SQL"},
+        {"from": "checkout", "to": "catalog", "label": "Reserves stock", "tech": "gRPC"},
+        {"from": "checkout", "to": "payments", "label": "Requests charge", "tech": "gRPC"}
+      ]
+    }
+  ]
+}
