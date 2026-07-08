@@ -94,7 +94,7 @@ describe("gateway (e2e)", () => {
   it("lets a validly-signed token through to the service", async () => {
     received = {};
     const token = jwt.sign({ sub: "u1", role: "customer" }, SECRET, {
-      expiresIn: "15m",
+      expiresIn: "60m",
     });
     const res = await request(app.getHttpServer())
       .get("/auth/me")

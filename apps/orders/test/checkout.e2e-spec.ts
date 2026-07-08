@@ -88,7 +88,7 @@ describe("orders saga over Kafka (e2e)", () => {
     return jwt.sign(
       { sub: customerId, role, email: `${role}@example.com` },
       getJwtSecret(),
-      { expiresIn: "15m" },
+      { expiresIn: "60m" },
     );
   }
 

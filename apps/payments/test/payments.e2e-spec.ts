@@ -141,7 +141,7 @@ describe("payments saga over Kafka (e2e)", () => {
     jwt.sign(
       { sub: customerId, role: "customer", email: "c@example.com" },
       getJwtSecret(),
-      { expiresIn: "15m" },
+      { expiresIn: "60m" },
     );
 
   const CUSTOMER = "22222222-2222-4222-8222-222222222222";
