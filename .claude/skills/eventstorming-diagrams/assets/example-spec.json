@@ -1,0 +1,16 @@
+{
+  "diagrams": [
+    {
+      "id": "place-order", "title": "EventStorming — Place an Order",
+      "story": "As a customer, I want to place an order and pay for it so that my items are shipped.",
+      "steps": [
+        {"actor": "Customer", "command": "Add Item to Cart", "aggregate": "Cart", "event": "Item Added to Cart", "read_model": "Cart View"},
+        {"actor": "Customer", "command": "Checkout Cart", "aggregate": "Cart", "event": "Checkout Requested"},
+        {"command": "Place Order", "aggregate": "Order", "event": "Order Placed", "policy": "When Order Placed, request payment", "read_model": "Order Summary"},
+        {"command": "Take Payment", "aggregate": "Payment", "event": "Payment Received", "external": "Payment Gateway", "policy": "When Payment Received, prepare shipment", "hotspot": "What if payment is declined?"},
+        {"command": "Ship Order", "aggregate": "Shipment", "event": "Order Shipped", "external": "Courier API", "read_model": "Tracking View"},
+        {"command": "Notify Customer", "aggregate": "Shipment", "event": "Customer Notified", "external": "Email Service"}
+      ]
+    }
+  ]
+}
