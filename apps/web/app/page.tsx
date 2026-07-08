@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import type { MangaView } from "@workspace/contracts";
 import { buttonVariants } from "@workspace/ui/components/button";
@@ -27,6 +28,21 @@ import {
  * it mirrors `HOME_REVALIDATE` (the value the rail fetches use); keep them equal.
  */
 export const revalidate = 3600;
+
+/**
+ * Homepage SEO (issue 04). An absolute, keyword-led title (the root template's
+ * `"%s · Manga Shop"` would otherwise read awkwardly at the root) and a
+ * self-canonical URL, so query-string variants of `/` are not treated as
+ * duplicate content. The default description from the root layout applies.
+ */
+export const metadata: Metadata = {
+  title: {
+    absolute: "Manga Shop — Buy Authentic Physical Manga Volumes Online",
+  },
+  description:
+    "Buy authentic, licensed physical manga volumes online. Browse Featured picks and New Arrivals, search by title, and shop by genre — priced in EUR with live USD, GBP and JPY labels.",
+  alternates: { canonical: "/" },
+};
 
 // How many genre chips the quick-nav shows before it stops being "quick".
 const GENRE_NAV_LIMIT = 12;

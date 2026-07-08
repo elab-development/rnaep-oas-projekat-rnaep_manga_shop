@@ -1,4 +1,8 @@
-import type { MangaView, Paginated } from "@workspace/contracts";
+import {
+  CATALOG_MAX_PAGE_SIZE,
+  type MangaView,
+  type Paginated,
+} from "@workspace/contracts";
 import { gatewayUrl } from "./auth";
 
 /**
@@ -107,4 +111,36 @@ export function fetchFeatured(): Promise<MangaView[]> {
  */
 export function fetchNewArrivals(): Promise<MangaView[]> {
   return fetchRail({});
+}
+
+/**
+ * Enumerates every manga in the catalog by walking the paginated list at the
+ * largest page size the service allows ({@link CATALOG_MAX_PAGE_SIZE}). Used by
+ * the sitemap (issue 04) to emit one `<url>` per product.
+ *
+ * Cacheable under the homepage ISR window (the sitemap is a static-ish route,
+ * not per-request), so a `no-store` fetch would not be right here. `total` from
+ * the first page fixes the page count, so the loop is bounded even as the
+ * catalog grows.
+ */
+export async function fetchAllManga(): Promise<MangaView[]> {
+  const first = await fetchPage(1);
+  const all = [...first.items];
+  for (let page = 2; page <= first.totalPages; page++) {
+    const next = await fetchPage(page);
+    all.push(...next.items);
+  }
+  return all;
+}
+
+/** One cacheable page of the full catalog walk (see {@link fetchAllManga}). */
+async function fetchPage(page: number): Promise<Paginated<MangaView>> {
+  const qs = catalogQuery({ page, limit: CATALOG_MAX_PAGE_SIZE });
+  const res = await fetch(`${gatewayUrl()}/catalog/manga?${qs}`, {
+    next: { revalidate: HOME_REVALIDATE },
+  });
+  if (!res.ok) {
+    throw new Error(`Catalog request failed (${res.status})`);
+  }
+  return (await res.json()) as Paginated<MangaView>;
 }

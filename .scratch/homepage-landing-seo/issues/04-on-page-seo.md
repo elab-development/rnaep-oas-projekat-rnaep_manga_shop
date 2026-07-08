@@ -1,6 +1,6 @@
 # 04. On-page SEO plumbing (metadata, canonical, robots, sitemap)
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -34,3 +34,47 @@ Out of scope (deferred per PRD): JSON-LD / structured data, dynamic per-product 
 ## Blocked by
 
 - [03. Homepage landing page (rails + chrome + ISR)](03-homepage-landing-page.md)
+
+## Comments
+
+Done. On-page SEO plumbing shipped on top of the finished slice-03 landing page.
+
+What was built:
+- **`apps/web/lib/site.ts`** (new) — `siteUrl()` reads `NEXT_PUBLIC_SITE_URL`,
+  defaults to the dev origin `http://localhost:3010`, normalises to `.origin`
+  (mirrors `next.config.ts`'s `gatewayOrigin()`). Single source for every base
+  URL — no hardcoded domain anywhere.
+- **Root layout `metadata`** — `metadataBase` from `siteUrl()`, a
+  `%s · Manga Shop` title template + keyword-led default title, a default
+  description, and OG/Twitter defaults (website, siteName, summary_large_image).
+- **Per-page description + `alternates.canonical`** on the three indexable
+  routes: homepage (absolute title so the root doesn't self-template awkwardly,
+  self-canonical `/`), catalog (retitled `"Catalog"` so the template renders
+  `Catalog · Manga Shop`; canonical is the **bare** `/catalog`, so
+  `?page`/`?q`/`?genre` variants aren't indexed as duplicates), product
+  (`generateMetadata` → templated title, `createdAt`/author-aware description
+  clamped to ~160 chars, canonical `/catalog/:id`).
+- **`app/robots.ts`** — allow-all, `host` + `sitemap` at the configured origin.
+- **`app/sitemap.ts`** — static public routes (`/`, `/catalog`, `/login`,
+  `/register`; auth-gated surfaces omitted) plus one `<url>` per product with
+  `lastmod=createdAt`, enumerated via a new `fetchAllManga()` that walks the
+  paginated list at `CATALOG_MAX_PAGE_SIZE`. Cacheable under the ISR window and
+  degrades to static-routes-only if the gateway is unreachable (mirrors the
+  slice-03 rail `.catch`), so it never fails the build.
+- **`NEXT_PUBLIC_SITE_URL` wired** end-to-end: `turbo.json` `globalEnv`,
+  `apps/web/Dockerfile` `ARG`/`ENV` (baked in at build like `NEXT_PUBLIC_*`),
+  `docker-compose.yml` web `build.args`, and documented in the README optional-env
+  table with its dev default.
+
+Verification (web has no test harness, per PRD): `typecheck` green, `lint` clean
+(only the pre-existing unrelated `GATEWAY_INTERNAL_URL` warning), full `pnpm test`
+green (both catalog specs pass). Web production build: `/` and `/sitemap.xml` are
+ISR 1h, `/robots.txt` static, catalog/product stay dynamic. Manually curled the
+running standalone server: catalog → `Catalog · Manga Shop`; product →
+`<title> · Manga Shop` + clamped description + `/catalog/:id` canonical;
+`/catalog?page=2&genre=Action` still canonicalises to the bare `/catalog`;
+robots + sitemap bodies correct (static routes + real product URLs).
+
+Follow-ups: none blocking. Out of scope per PRD and still deferred — JSON-LD /
+structured data, dynamic per-product OG images, and migrating covers to
+`next/image`. This closes the homepage-landing-seo PRD (04 was the last slice).

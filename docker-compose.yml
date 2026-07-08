@@ -293,6 +293,10 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_GATEWAY_URL: "http://localhost:3000"
+        # Public base URL for SEO (canonical / sitemap / robots / OG). Baked in
+        # at build time like every NEXT_PUBLIC_*; a real deploy overrides it with
+        # its own domain. Defaults to the web container's published origin.
+        NEXT_PUBLIC_SITE_URL: "http://localhost:3010"
     environment:
       PORT: "3010"
       GATEWAY_INTERNAL_URL: "http://gateway:3000"

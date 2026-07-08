@@ -21,6 +21,11 @@ RUN pnpm install --frozen-lockfile
 # server-side URL is a runtime env var (GATEWAY_INTERNAL_URL), set at run time.
 ARG NEXT_PUBLIC_GATEWAY_URL=http://localhost:3000
 ENV NEXT_PUBLIC_GATEWAY_URL=$NEXT_PUBLIC_GATEWAY_URL
+# Public base URL for SEO (canonical / sitemap / robots / OG), inlined at build
+# time. Default is the host-published web origin (localhost:3010); override with
+# --build-arg for a real deployment domain.
+ARG NEXT_PUBLIC_SITE_URL=http://localhost:3010
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 # @workspace/contracts resolves to its compiled dist/, so build it first (like
 # the service Dockerfiles). @workspace/ui is consumed from source via
 # transpilePackages and needs no build step.
