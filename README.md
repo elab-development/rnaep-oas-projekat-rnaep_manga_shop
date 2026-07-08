@@ -133,6 +133,7 @@ Optional env (sensible dev fallbacks if unset):
 | `FRONTEND_ORIGIN`        | gateway | `http://localhost:3010` (CORS allow-list)|
 | `AUTH_SERVICE_URL`       | gateway | `http://localhost:3001`                  |
 | `NEXT_PUBLIC_GATEWAY_URL`| web     | `http://localhost:3000`                  |
+| `NEXT_PUBLIC_SITE_URL`   | web     | `http://localhost:3010` (SEO base URL: canonical / sitemap / robots / OG) |
 
 Auth runs Drizzle migrations at boot; the schema lives in `apps/auth/drizzle/`
 (`pnpm --filter auth exec drizzle-kit generate` regenerates after schema edits).

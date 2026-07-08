@@ -19,7 +19,25 @@ export async function generateMetadata({
 }: DetailPageProps): Promise<Metadata> {
   const { id } = await params;
   const manga = await fetchManga(id);
-  return { title: manga ? `${manga.title} · Manga Shop` : "Not found" };
+  if (!manga) {
+    // Titles render through the root template → "Not found · Manga Shop".
+    return { title: "Not found" };
+  }
+  const lead = `${manga.title} by ${manga.author} — an authentic physical manga volume, priced in EUR.`;
+  return {
+    // → "<title> · Manga Shop" via the root template.
+    title: manga.title,
+    description: clampDescription(`${lead} ${manga.description}`),
+    alternates: { canonical: `/catalog/${manga.id}` },
+  };
+}
+
+/** Keep meta descriptions to a search-snippet length (~160 chars). */
+function clampDescription(text: string): string {
+  const max = 160;
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
 export default async function MangaDetailPage({ params }: DetailPageProps) {

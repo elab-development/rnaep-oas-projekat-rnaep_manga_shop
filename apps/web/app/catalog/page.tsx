@@ -6,8 +6,14 @@ import { CatalogSearch } from "@/components/catalog-search";
 import { MangaCard } from "@/components/manga-card";
 import { fetchCatalog, fetchGenres } from "@/lib/catalog";
 
+// Title renders through the root template → "Catalog · Manga Shop". The
+// canonical is the bare `/catalog`, so paginated / search / genre query-string
+// variants are not indexed as duplicate content (issue 04).
 export const metadata: Metadata = {
-  title: "Catalog · Manga Shop",
+  title: "Catalog",
+  description:
+    "Browse the full catalog of authentic physical manga volumes. Search by title, filter by genre, and see real stock and EUR prices before you buy.",
+  alternates: { canonical: "/catalog" },
 };
 
 // Prices and stock change; always render against fresh data.
